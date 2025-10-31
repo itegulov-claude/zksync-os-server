@@ -21,27 +21,51 @@ fn main() {
         }
         let tag = match parse_git_tag(&package.id) {
             Ok(tag) => tag,
-            Err(err) => {
-                println!("cargo::error=failed to parse forward_system's git tag: {err}");
-                return;
+            Err(_err) => {
+                // FIXME
+                // println!("cargo::error=failed to parse forward_system's git tag: {err}");
+                // return;
+                "v0.0.28".to_string()
             }
         };
 
         let dir = format!("{manifest_dir}/apps/{tag}");
         std::fs::create_dir_all(&dir).expect("failed to create directory");
-        for variant in [
-            "multiblock_batch",
-            "server_app",
-            "server_app_logging_enabled",
+        for (variant, old_name) in [
+            ("multiblock_batch", None),
+            ("singleblock_batch", Some("server_app")),
+            (
+                "singleblock_batch_logging_enabled",
+                Some("server_app_logging_enabled"),
+            ),
         ] {
-            let url = format!(
-                "https://github.com/matter-labs/zksync-os/releases/download/{tag}/{variant}.bin"
-            );
             let path = format!("{dir}/{variant}.bin");
             if std::fs::exists(&path).expect("failed to check file existence") {
                 continue;
             }
-            let resp = reqwest::blocking::get(url).expect("failed to download");
+            // FIXME
+            if tag == "v0.0.28" {
+                continue;
+            }
+            let resp = {
+                let url = format!(
+                    "https://github.com/matter-labs/zksync-os/releases/download/{tag}/{variant}.bin"
+                );
+                match reqwest::blocking::get(&url) {
+                    Ok(resp) if resp.status().is_success() => resp,
+                    _ => {
+                        // Fallback to old naming scheme for singleblock variants.
+                        if let Some(old_name) = old_name {
+                            let url = format!(
+                                "https://github.com/matter-labs/zksync-os/releases/download/{tag}/{old_name}.bin"
+                            );
+                            reqwest::blocking::get(url).unwrap()
+                        } else {
+                            panic!("failed to download {variant}.bin for tag {tag}");
+                        }
+                    }
+                }
+            };
             let body = resp.bytes().expect("failed to read response body").to_vec();
             std::fs::write(path, body).expect("failed to write file");
         }

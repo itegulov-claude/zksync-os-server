@@ -3,7 +3,8 @@
 //! Also, update the `LATEST_EXECUTION_VERSION` constant accordingly.
 
 use num_enum::TryFromPrimitive;
-use zk_os_forward_system::run::RunBlockForward as RunBlockForwardV3;
+use zk_os_forward_system::run::RunBlockForward as RunBlockForwardV4;
+use zk_os_forward_system_0_0_26::run::RunBlockForward as RunBlockForwardV3;
 use zksync_os_interface::error::InvalidTransaction;
 use zksync_os_interface::tracing::AnyTracer;
 use zksync_os_interface::traits::{
@@ -12,7 +13,10 @@ use zksync_os_interface::traits::{
 use zksync_os_interface::types::BlockContext;
 use zksync_os_interface::types::{BlockOutput, TxOutput};
 
+mod adapter;
 pub mod apps;
+
+pub use adapter::AbiTxSource;
 
 #[derive(Debug, Clone, Copy, TryFromPrimitive)]
 #[repr(u32)]
@@ -20,9 +24,10 @@ pub enum ExecutionVersion {
     V1 = 1,
     V2 = 2,
     V3 = 3,
+    V4 = 4,
 }
 
-pub const LATEST_EXECUTION_VERSION: ExecutionVersion = ExecutionVersion::V3;
+pub const LATEST_EXECUTION_VERSION: ExecutionVersion = ExecutionVersion::V4;
 
 pub fn run_block<
     Storage: ReadStorage,
@@ -45,6 +50,20 @@ pub fn run_block<
     match execution_version {
         ExecutionVersion::V1 | ExecutionVersion::V2 | ExecutionVersion::V3 => {
             let object = RunBlockForwardV3 {};
+            object
+                .run_block(
+                    (),
+                    block_context,
+                    storage,
+                    preimage_source,
+                    AbiTxSource::new(tx_source),
+                    tx_result_callback,
+                    tracer,
+                )
+                .map_err(|err| anyhow::anyhow!(err))
+        }
+        ExecutionVersion::V4 => {
+            let object = RunBlockForwardV4 {};
             object
                 .run_block(
                     (),
@@ -77,6 +96,19 @@ pub fn simulate_tx<Storage: ReadStorage, PreimgSrc: PreimageSource, Tracer: AnyT
             object
                 .simulate_tx(
                     (),
+                    adapter::convert_tx_to_abi(transaction),
+                    block_context,
+                    storage,
+                    preimage_source,
+                    tracer,
+                )
+                .map_err(|err| anyhow::anyhow!(err))
+        }
+        ExecutionVersion::V4 => {
+            let object = RunBlockForwardV4 {};
+            object
+                .simulate_tx(
+                    (),
                     transaction,
                     block_context,
                     storage,
@@ -94,5 +126,6 @@ pub fn proving_run_execution_version(forward_run_execution_version: u32) -> Exec
         .expect("Unsupported ZKsync OS execution version");
     match forward_run_execution_version {
         ExecutionVersion::V1 | ExecutionVersion::V2 | ExecutionVersion::V3 => ExecutionVersion::V3,
+        ExecutionVersion::V4 => ExecutionVersion::V4,
     }
 }
