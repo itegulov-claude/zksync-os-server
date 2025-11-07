@@ -51,7 +51,13 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
 
     /* ---------- deadline config ------------------------------------ */
     let deadline_dur = match command.seal_policy {
-        SealPolicy::Decide(d, _) => Some(d),
+        SealPolicy::Decide(d, _) => {
+            if ctx.block_number == 1 {
+                Some(std::time::Duration::from_secs(1))
+            } else {
+                Some(d)
+            }
+        }
         SealPolicy::UntilExhausted { .. } => None,
     };
     let mut deadline: Option<Pin<Box<Sleep>>> = None; // will arm after 1st tx success

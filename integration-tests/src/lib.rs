@@ -259,27 +259,25 @@ impl Tester {
         })
         .await?;
 
-        if !enable_prover {
-            // Wait for all L1 priority transaction to get executed and for our L2 account to become rich
-            (|| async {
-                let balance = l2_provider
-                    .get_balance(l2_wallet.default_signer().address())
-                    .await?;
-                if balance == U256::ZERO {
-                    anyhow::bail!("L2 rich wallet balance is zero")
-                }
-                Ok(())
-            })
-            .retry(
-                ConstantBuilder::default()
-                    .with_delay(Duration::from_secs(1))
-                    .with_max_times(10),
-            )
-            .notify(|err: &anyhow::Error, dur: Duration| {
-                tracing::info!(%err, ?dur, "waiting for L2 account to become rich");
-            })
-            .await?;
-        }
+        // Wait for all L1 priority transaction to get executed and for our L2 account to become rich
+        (|| async {
+            let balance = l2_provider
+                .get_balance(l2_wallet.default_signer().address())
+                .await?;
+            if balance == U256::ZERO {
+                anyhow::bail!("L2 rich wallet balance is zero")
+            }
+            Ok(())
+        })
+        .retry(
+            ConstantBuilder::default()
+                .with_delay(Duration::from_secs(1))
+                .with_max_times(10),
+        )
+        .notify(|err: &anyhow::Error, dur: Duration| {
+            tracing::info!(%err, ?dur, "waiting for L2 account to become rich");
+        })
+        .await?;
 
         let l2_zk_provider = ProviderBuilder::new_with_network::<Zksync>()
             .wallet(l2_wallet.clone())
