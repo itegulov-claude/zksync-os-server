@@ -139,7 +139,7 @@ impl BatchInfo {
             chain_address,
             upgrade_tx_hash,
             blob_sidecar: da_fields.blob_sidecar,
-            da_commitment_scheme: pubdata_mode.da_commitment_scheme_zksync_os()
+            da_commitment_scheme: pubdata_mode.da_commitment_scheme_zksync_os(),
         }
     }
 
@@ -228,11 +228,7 @@ fn calculate_da_fields(pubdata: &[u8], pubdata_mode: PubdataMode) -> DAFields {
             // blob_commitment should be set to zero in ZK OS
             operator_da_input.extend(B256::ZERO.as_slice());
 
-            (
-                da_commitment,
-                operator_da_input,
-                None,
-            )
+            (da_commitment, operator_da_input, None)
         }
         PubdataMode::Blobs => {
             // returns error in case of internal error during sidecar calculation

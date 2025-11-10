@@ -109,8 +109,12 @@ impl From<IExecutor::L2DACommitmentScheme> for DACommitmentScheme {
         match value {
             IExecutor::L2DACommitmentScheme::NONE => DACommitmentScheme::None,
             IExecutor::L2DACommitmentScheme::EMPTY_NO_DA => DACommitmentScheme::EmptyNoDA,
-            IExecutor::L2DACommitmentScheme::PUBDATA_KECCAK256 => DACommitmentScheme::PubdataKeccak256,
-            IExecutor::L2DACommitmentScheme::BLOBS_AND_PUBDATA_KECCAK256 => DACommitmentScheme::BlobsAndPubdataKeccak256,
+            IExecutor::L2DACommitmentScheme::PUBDATA_KECCAK256 => {
+                DACommitmentScheme::PubdataKeccak256
+            }
+            IExecutor::L2DACommitmentScheme::BLOBS_AND_PUBDATA_KECCAK256 => {
+                DACommitmentScheme::BlobsAndPubdataKeccak256
+            }
             IExecutor::L2DACommitmentScheme::BLOBS_ZKSYNC_OS => DACommitmentScheme::BlobsZKsyncOS,
             // TODO: remove panic
             IExecutor::L2DACommitmentScheme::__Invalid => panic!(),

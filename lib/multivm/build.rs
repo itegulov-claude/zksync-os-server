@@ -22,9 +22,7 @@ fn main() {
         let tag = match parse_git_tag(&package.id) {
             Ok(tag) => tag,
             // TODO: don't forget to remove once zksync os realesed
-            Err(_) => {
-                "v0.1.0".to_string()
-            }
+            Err(_) => "v0.1.0".to_string(),
         };
 
         let dir = format!("{manifest_dir}/apps/{tag}");

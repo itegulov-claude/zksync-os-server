@@ -14,9 +14,7 @@ pub struct CommitCommand {
 
 impl CommitCommand {
     pub fn new(input: SignedBatchEnvelope<FriProof>) -> Self {
-        Self {
-            input,
-        }
+        Self { input }
     }
 }
 

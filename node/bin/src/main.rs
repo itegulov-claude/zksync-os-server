@@ -7,8 +7,8 @@ use zksync_os_observability::prometheus::PrometheusExporterConfig;
 use zksync_os_server::config::{
     BatchVerificationConfig, BatcherConfig, Config, GasAdjusterConfig, GeneralConfig,
     GenesisConfig, L1SenderConfig, L1WatcherConfig, MempoolConfig, ObservabilityConfig,
-    ProverApiConfig, ProverInputGeneratorConfig, RpcConfig, SequencerConfig,
-    StateBackendConfig, StatusServerConfig, TxValidatorConfig,
+    ProverApiConfig, ProverInputGeneratorConfig, RpcConfig, SequencerConfig, StateBackendConfig,
+    StatusServerConfig, TxValidatorConfig,
 };
 use zksync_os_server::run;
 use zksync_os_server::zkstack_config::ZkStackConfig;
