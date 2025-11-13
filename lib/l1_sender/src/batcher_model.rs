@@ -11,6 +11,7 @@ use zksync_os_contract_interface::models::StoredBatchInfo;
 use zksync_os_multivm::ExecutionVersion;
 use zksync_os_observability::LatencyDistributionTracker;
 use zksync_os_types::PubdataMode;
+use zksync_os_types::ProtocolSemanticVersion;
 // todo: these models are used throughout the batcher subsystem - not only l1 sender
 //       we will move them to `types` or `batcher_types` when an analogous crate is created in `zksync-os`
 
@@ -37,6 +38,8 @@ pub struct BatchMetadata {
     pub tx_count: usize,
     #[serde(default = "default_execution_version")]
     pub execution_version: u32,
+    #[serde(default = "default_protocol_version")] // Default to allow deserializing older objects
+    pub protocol_version: ProtocolSemanticVersion,
 }
 
 impl BatchMetadata {
@@ -58,6 +61,11 @@ fn default_execution_version() -> u32 {
 
 fn default_pubdata_mode() -> PubdataMode {
     PubdataMode::Calldata
+}
+
+fn default_protocol_version() -> ProtocolSemanticVersion {
+    // Last protocol version deployed before this field was added
+    ProtocolSemanticVersion::legacy_genesis_version()
 }
 
 #[derive(Debug)]

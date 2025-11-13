@@ -16,6 +16,10 @@ impl CommitCommand {
     pub fn new(input: SignedBatchEnvelope<FriProof>) -> Self {
         Self { input }
     }
+
+    pub(crate) fn input(&self) -> &SignedBatchEnvelope<FriProof> {
+        &self.input
+    }
 }
 
 impl SendToL1 for CommitCommand {
