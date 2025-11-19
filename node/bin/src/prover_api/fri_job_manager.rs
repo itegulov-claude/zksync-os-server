@@ -63,6 +63,7 @@ pub struct JobState {
     pub fri_job: FriJob,
     pub added_seconds_ago: u64,
     pub assigned_seconds_ago: Option<u64>,
+    pub assigned_to_prover_id: Option<String>,
     pub current_attempt: usize,
 }
 
@@ -110,7 +111,7 @@ impl FriJobManager {
 
     /// Peek a batch data for a given batch number
     pub async fn peek_batch_data(&self, batch_number: u64) -> Option<(&str, ProverInput)> {
-        match self.jobs.get_batch_data(batch_number).await {
+        match self.jobs.get_prover_input(batch_number).await {
             Some((vk_hash, prover_input)) => {
                 tracing::info!("Batch data is peeked for batch number {batch_number}");
                 Some((vk_hash, prover_input))
@@ -149,7 +150,7 @@ impl FriJobManager {
         prover_id: &str,
     ) -> Result<(), SubmitError> {
         // Snapshot the assigned job entry (if any).
-        let batch_metadata = match self.jobs.get_job(batch_number).await {
+        let batch_metadata = match self.jobs.get_job_batch_metadata(batch_number).await {
             Some(e) => e,
             None => return Err(SubmitError::UnknownJob(batch_number)),
         };

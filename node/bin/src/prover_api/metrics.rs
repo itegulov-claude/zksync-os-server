@@ -1,15 +1,21 @@
 use std::time::Duration;
-use vise::{Buckets, EncodeLabelValue, Histogram, LabeledFamily, Metrics, Unit};
+use vise::{Buckets, EncodeLabelValue, Gauge, Histogram, LabeledFamily, Metrics, Unit};
 
 #[derive(Debug, Metrics)]
 #[metrics(prefix = "prover")]
 pub struct ProverMetrics {
+    #[metrics(labels = ["stage"])]
+    pub prover_job_map_min_batch_number: LabeledFamily<ProverStage, Gauge>,
+    #[metrics(labels = ["stage"])]
+    pub prover_job_map_max_batch_number: LabeledFamily<ProverStage, Gauge>,
+    #[metrics(labels = ["stage"])]
+    pub batch_count: LabeledFamily<ProverStage, Gauge>,
     #[metrics(unit = Unit::Seconds, labels = ["stage", "type", "id"], buckets = Buckets::LATENCIES)]
     pub prove_time: LabeledFamily<(ProverStage, ProverType, &'static str), Histogram<Duration>, 3>,
     #[metrics(unit = Unit::Seconds, labels = ["stage", "type", "id"], buckets = Buckets::LATENCIES)]
     pub prove_time_per_tx:
         LabeledFamily<(ProverStage, ProverType, &'static str), Histogram<Duration>, 3>,
-    #[metrics(labels = ["stage", "type"], buckets = Buckets::values(&[1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 50.0]))]
+    #[metrics(labels = ["stage", "type"], buckets = Buckets::values(&[1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0, 50.0]))]
     pub proved_after_attempts: LabeledFamily<(ProverStage, ProverType), Histogram, 2>,
 }
 

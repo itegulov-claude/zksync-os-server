@@ -1,4 +1,6 @@
-use super::models::{JobBatchStats, JobMetadata, NonEmptyQueueStatistics, QueueStatistics};
+use super::models::{
+    JobBatchStats, JobEntry, JobMetadata, NonEmptyQueueStatistics, QueueStatistics,
+};
 use crate::prover_api::fri_job_manager::{FriJob, JobState};
 use crate::prover_api::metrics::{PROVER_METRICS, ProverStage, ProverType};
 use std::collections::BTreeMap;
@@ -7,32 +9,31 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, Notify};
 use zksync_os_l1_sender::batcher_model::{BatchMetadata, SignedBatchEnvelope};
 
-#[derive(Debug)]
-pub struct JobEntry<T> {
-    pub batch_envelope: SignedBatchEnvelope<T>,
-    pub metadata: JobMetadata,
-}
-
-/// Concurrent map of prover jobs
+/// Concurrent map of prover jobs that support FRI and SNARK workflows.
+/// Imposes a limit on batch range
 /// Keys are batch numbers stored in a BTreeMap for ordered iteration.
-/// Features:
-///  * add_job - adds a new job
+/// Values are prover input -
+/// concrete type depend on the prover stage (FRI - prover_input (Vec<u32>), SNARK - fri_proof).
+///  * add_job - adds a new job (one batch)
 ///     * blocks if adding this job would exceed max_assigned_batch_range until space is available
-///     * O(log n)
 ///  * pick_job - picks the first job that is either pending or assigned and older than min_age
 ///     * currently, it iterates over all jobs and picks the first one that meets the criteria
-///     * O(n)
 ///  * complete_job - marks a job as complete by removing it from the map
-///     * O(log n)
 ///
-/// Note that the current implementation uses async Mutex which is locked on each operation.
-/// This may be problematic with a large number of in-progress jobs and a lot of polling -
-/// but should be OK for hundreds of jobs/provers.
+/// Current implementation uses async Mutex which is locked on each operation -
+///     that is, prover requests to polling/submitting are sequential only.
+/// This works for ~100s-1000s of jobs.
+/// If needed, can be augmented by pointers to the oldest job and the first unpicked job -
+/// this way polling is O(log n) not O(n).
+///
+/// This works both for FRI and SNARK jobs by allowing to pick multiple jobs atomically.
+/// We don't maintain the SNARK job grouping - so that on timeout, a wider range can be assigned.
+///
 #[derive(Debug)]
 pub struct ProverJobMap<T> {
     // == state ==
     jobs: Mutex<BTreeMap<u64, JobEntry<T>>>,
-    // Notification for waiting when batch range limit is hit
+    // Notification for waiting when batch range limit is hit (`max_assigned_batch_range`)
     space_available: Notify,
 
     // == config ==
@@ -60,14 +61,14 @@ impl<T: Clone> ProverJobMap<T> {
     }
 
     /// Adds a pending job to the map.
-    /// Awaits if adding this job would exceed max_assigned_batch_range until space is available.
+    /// Awaits if adding this job exceeds `max_assigned_batch_range` until space is available.
     pub async fn add_job(&self, batch_envelope: SignedBatchEnvelope<T>) {
         let batch_number = batch_envelope.batch_number();
         let mut jobs = self.jobs.lock().await;
 
         // Wait until there's space available (await if batch range limit would be exceeded)
         while self.is_queue_full(&jobs) {
-            let queue_statistics = Self::queue_statistics(&jobs);
+            let queue_statistics = self.queue_statistics(&jobs);
 
             tracing::info!(
                 batch_number,
@@ -83,24 +84,16 @@ impl<T: Clone> ProverJobMap<T> {
             jobs = self.jobs.lock().await;
         }
 
-        let vk_hash = batch_envelope
-            .batch
-            .proving_version()
-            .expect("Must be valid execution as set by the server")
-            .vk_hash()
-            .to_string();
-        let tx_count = batch_envelope.batch.tx_count;
-
         let entry = JobEntry {
+            metadata: JobMetadata::new_from_batch(&batch_envelope),
             batch_envelope,
-            metadata: JobMetadata::new_pending(batch_number, vk_hash, tx_count),
         };
 
         jobs.insert(batch_number, entry);
 
         tracing::info!(
             batch_number,
-            queue_statistics = ?Self::queue_statistics(&jobs),
+            queue_statistics = ?self.queue_statistics(&jobs),
             ?self.prover_stage,
             "Job added"
         );
@@ -111,6 +104,8 @@ impl<T: Clone> ProverJobMap<T> {
     /// - Assigned and timed out
     ///
     /// Returns None if no eligible job is found.
+    ///
+    /// Used for FRI jobs (one batch == on job)
     pub async fn pick_job(
         &self,
         min_age: Duration,
@@ -152,51 +147,47 @@ impl<T: Clone> ProverJobMap<T> {
         let mut selected_jobs = Vec::new();
         for (_, entry) in jobs.iter_mut() {
             let is_eligible =
-                // job is either pending or timed out
-                entry
-                    .metadata
-                    .assigned_at
-                    .is_none_or(|assigned_at| now.duration_since(assigned_at) >= self.assignment_timeout)
+                // Stop if we've reached the limit
+                selected_jobs.len() < limit
+                    &&
+                    // job is either pending or timed out
+                    entry
+                        .metadata
+                        .assigned_at
+                        .is_none_or(|assigned_at| now.duration_since(assigned_at) >= self.assignment_timeout)
                     &&
                     // predicate passed from outside should return `true`
                     predicate(entry)
                     &&
                     // no gaps in batch numbers
                     selected_jobs.last().is_none_or(|last: &JobMetadata|
-                        last.batch_number + 1 == entry.metadata.batch_number &&
-                            // all have to have the same proving version
-                            entry.metadata.vk_hash == last.vk_hash,
+                                                        last.batch_number + 1 == entry.metadata.batch_number &&
+                                                            // all have the same proving version
+                                                            entry.metadata.proving_version == last.proving_version,
                     );
 
             if !is_eligible {
                 if selected_jobs.is_empty() {
-                    // We don't have any jobs in the result - continue looking for the first eligible job
+                    // We didn't find any jobs yet - continue looking for the first eligible one
                     continue;
                 } else {
-                    // We already have some jobs - cannot add more jobs there without a gap
+                    // We already have some jobs - cannot add more jobs, otherwise we'd have a gap
                     break;
                 }
             }
 
             // Assign job
-            entry.metadata.assign(now);
+            entry.metadata.assign(now, prover_id);
             selected_jobs.push(entry.metadata.clone());
-            // Stop if we've reached the limit
-            if selected_jobs.len() >= limit {
-                break;
-            }
         }
 
         if selected_jobs.is_empty() {
             return Vec::new();
         }
 
-        let stats = JobBatchStats::new(&selected_jobs);
-        let queue_statistics = Self::queue_statistics(&jobs);
-
         tracing::info!(
-            ?stats,
-            ?queue_statistics,
+            ?JobBatchStats::new(&selected_jobs),
+            ?self.queue_statistics(&jobs),
             prover_id,
             ?self.prover_stage,
             "Job assigned",
@@ -209,7 +200,7 @@ impl<T: Clone> ProverJobMap<T> {
                 (
                     FriJob {
                         batch_number: metadata.batch_number,
-                        vk_hash: metadata.vk_hash,
+                        vk_hash: metadata.proving_version.vk_hash().to_string(),
                     },
                     entry.batch_envelope.data.clone(),
                 )
@@ -218,14 +209,14 @@ impl<T: Clone> ProverJobMap<T> {
     }
 
     /// If a job is present for a given batch_number, returns the corresponding BatchMetadata
-    pub async fn get_job(&self, batch_number: u64) -> Option<BatchMetadata> {
+    pub async fn get_job_batch_metadata(&self, batch_number: u64) -> Option<BatchMetadata> {
         let jobs = self.jobs.lock().await;
         jobs.get(&batch_number)
             .map(|entry| entry.batch_envelope.batch.clone())
     }
 
-    /// If a job is present for given batch_number, returns (vk, data)
-    pub async fn get_batch_data(&self, batch_number: u64) -> Option<(&'static str, T)> {
+    /// If a job is present for given batch_number, returns (vk, prover_input)
+    pub async fn get_prover_input(&self, batch_number: u64) -> Option<(&'static str, T)> {
         let jobs = self.jobs.lock().await;
         jobs.get(&batch_number).map(|entry| {
             (
@@ -242,6 +233,8 @@ impl<T: Clone> ProverJobMap<T> {
     /// Marks a job as complete by removing it from the map.
     /// Notifies inbound jobs waiting in add_job() that space may be available.
     /// Records metrics and logs timing info. Returns the batch envelope if the job existed.
+    ///
+    /// Used for FRI jobs (one batch == on job)
     pub async fn complete_job(
         &self,
         batch_number: u64,
@@ -253,6 +246,12 @@ impl<T: Clone> ProverJobMap<T> {
             .and_then(|mut envelopes| envelopes.pop())
     }
 
+    /// Marks a job as complete by removing it from the map.
+    /// Notifies inbound jobs waiting in add_job() that space may be available.
+    /// Records metrics and logs timing info. Returns the batch envelope if the job existed.
+    ///
+    /// Ensures that all completed jobs still exist in the map -
+    ///   returns None if any of them were removed (complete before)
     pub async fn complete_many_jobs(
         &self,
         batch_number_from: u64,
@@ -271,14 +270,13 @@ impl<T: Clone> ProverJobMap<T> {
                     missing_batch_number = batch_number,
                     prover_id,
                     ?prover_type,
-                    "Cannot complete many jobs: job missing from map (race condition)"
+                    ?self.prover_stage,
+                    "Cannot complete job: job missing from map (race condition)"
                 );
                 return None;
             }
         }
-
-        // There is no race condition possible here - we hold the mutex lock.
-
+        // There is no race condition (TOCTOU) possible here as we hold the mutex lock.
         // All jobs exist - can mark as completed
         let mut completed = Vec::new();
         for batch_number in batch_number_from..=batch_number_to {
@@ -290,19 +288,32 @@ impl<T: Clone> ProverJobMap<T> {
         let stats = JobBatchStats::new(&metadata);
 
         // Record Prometheus metrics
-        if let Some(prove_time) = stats.max_time_since_last_assignment {
-            PROVER_METRICS.prove_time[&(self.prover_stage, prover_type, prover_id)]
-                .observe(prove_time);
-            if stats.total_txs > 0 {
-                PROVER_METRICS.prove_time_per_tx[&(self.prover_stage, prover_type, prover_id)]
-                    .observe(prove_time / stats.total_txs as u32);
+        if let Some(assignment_info) = stats.job_with_max_attempts_info {
+            if assignment_info.last_assigned_to == prover_id {
+                // only writing metrics for normal case - the last assigned prover reported result
+                PROVER_METRICS.prove_time[&(self.prover_stage, prover_type, prover_id)]
+                    // time since last assignment is proving time
+                    .observe(assignment_info.time_since_last_assignment);
+                if stats.total_txs > 0 {
+                    PROVER_METRICS.prove_time_per_tx[&(self.prover_stage, prover_type, prover_id)]
+                        .observe(
+                            assignment_info.time_since_last_assignment / stats.total_txs as u32,
+                        );
+                }
+                PROVER_METRICS.proved_after_attempts[&(self.prover_stage, prover_type)]
+                    .observe(assignment_info.attempts as f64);
+            } else {
+                tracing::info!(
+                    ?stats,
+                    ?self.prover_stage,
+                    "Received a valid proof for a job assigned to another prover - possible timeout. Consider increasing assignment_timeout."
+                )
             }
-            PROVER_METRICS.proved_after_attempts[&(self.prover_stage, prover_type)]
-                .observe(stats.max_attempts as f64);
         } else {
             tracing::info!(
                 ?stats,
-                "Received a valid proof for a job not marked as assigned - potentially assigned before a restart."
+                ?self.prover_stage,
+                "Received a valid proof for a job not marked as assigned - possibly assigned before a restart."
             )
         }
 
@@ -311,7 +322,8 @@ impl<T: Clone> ProverJobMap<T> {
             ?prover_type,
             prover_id,
             ?self.prover_stage,
-            "Jobs completed and removed from map",
+            queue_statistics = ?self.queue_statistics(&jobs),
+            "Job completed",
         );
 
         drop(jobs);
@@ -321,7 +333,8 @@ impl<T: Clone> ProverJobMap<T> {
         Some(completed.into_iter().map(|e| e.batch_envelope).collect())
     }
 
-    /// Check if the queue is full (range between oldest and newest batch >= max_assigned_batch_range)
+    /// Check if the queue is full (range between the oldest and newest batch >= max_assigned_batch_range)
+    /// Only used when adding a new job
     fn is_queue_full(&self, jobs: &BTreeMap<u64, JobEntry<T>>) -> bool {
         if let (Some(&min), Some(&max)) = (jobs.keys().next(), jobs.keys().next_back()) {
             max - min >= self.max_assigned_batch_range as u64
@@ -330,16 +343,26 @@ impl<T: Clone> ProverJobMap<T> {
         }
     }
 
-    fn queue_statistics(jobs: &BTreeMap<u64, JobEntry<T>>) -> QueueStatistics {
+    fn queue_statistics(&self, jobs: &BTreeMap<u64, JobEntry<T>>) -> QueueStatistics {
         let min_batch = jobs.values().next();
+        PROVER_METRICS.batch_count[&self.prover_stage].set(jobs.len() as i64);
         match min_batch {
-            Some(min_batch) => QueueStatistics::NonEmpty(NonEmptyQueueStatistics {
-                min_batch_added_at: min_batch.metadata.added_at,
-                min_batch_current_attempt: min_batch.metadata.current_attempt,
-                min_batch_number: min_batch.batch_envelope.batch_number(),
-                max_batch_number: *jobs.keys().next_back().unwrap(),
-                jobs_count: jobs.len(),
-            }),
+            Some(min_batch) => {
+                let min_batch_number = min_batch.batch_envelope.batch_number();
+                let max_batch_number = *jobs.keys().next_back().unwrap();
+                let result = QueueStatistics::NonEmpty(NonEmptyQueueStatistics {
+                    min_batch_added_at: min_batch.metadata.added_at,
+                    min_batch_current_attempt: min_batch.metadata.current_attempt,
+                    min_batch_number: min_batch.batch_envelope.batch_number(),
+                    max_batch_number,
+                    jobs_count: jobs.len(),
+                });
+                PROVER_METRICS.prover_job_map_min_batch_number[&self.prover_stage]
+                    .set(min_batch_number as i64);
+                PROVER_METRICS.prover_job_map_max_batch_number[&self.prover_stage]
+                    .set(max_batch_number as i64);
+                result
+            }
             None => QueueStatistics::Empty,
         }
     }
@@ -350,18 +373,14 @@ impl<T: Clone> ProverJobMap<T> {
             .map(|(batch_number, entry)| JobState {
                 fri_job: FriJob {
                     batch_number: *batch_number,
-                    vk_hash: entry
-                        .batch_envelope
-                        .batch
-                        .verification_key_hash()
-                        .expect("VK hash must exist")
-                        .to_string(),
+                    vk_hash: entry.metadata.proving_version.vk_hash().to_string(),
                 },
                 assigned_seconds_ago: entry
                     .metadata
                     .assigned_at
                     .map(|assigned_at| assigned_at.elapsed().as_secs()),
                 current_attempt: entry.metadata.current_attempt,
+                assigned_to_prover_id: entry.metadata.assigned_to_prover_id.map(|id| id.to_string()),
                 added_seconds_ago: entry.metadata.added_at.elapsed().as_secs(),
             })
             .collect() // Already sorted by BTreeMap ordering
