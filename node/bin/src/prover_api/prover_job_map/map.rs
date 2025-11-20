@@ -13,8 +13,8 @@ use zksync_os_l1_sender::batcher_model::{BatchMetadata, SignedBatchEnvelope};
 /// Concurrent map of prover jobs that support FRI and SNARK workflows.
 /// Imposes a limit on batch range
 /// Keys are batch numbers stored in a BTreeMap for ordered iteration.
-/// Values are prover input -
-/// concrete type depend on the prover stage (FRI - prover_input (Vec<u32>), SNARK - fri_proof).
+/// Values are prover input - concrete types depend on the prover stage
+///     (FRI - prover_input (Vec<u32>), SNARK - fri_proof).
 ///  * add_job - adds a new job (one batch)
 ///     * blocks if adding this job would exceed max_assigned_batch_range until space is available
 ///  * pick_job - picks the first job that is either pending or assigned and older than min_age
@@ -28,7 +28,7 @@ use zksync_os_l1_sender::batcher_model::{BatchMetadata, SignedBatchEnvelope};
 /// this way polling is O(log n) not O(n).
 ///
 /// This works both for FRI and SNARK jobs by allowing to pick multiple jobs atomically.
-/// We don't maintain the SNARK job grouping - so that on timeout, a wider range can be assigned.
+/// We don't maintain the SNARK job grouping - so that on timeout, a different range may be assigned instead.
 ///
 #[derive(Debug)]
 pub struct ProverJobMap<T> {

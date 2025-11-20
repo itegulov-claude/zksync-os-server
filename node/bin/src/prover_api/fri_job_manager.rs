@@ -1,5 +1,17 @@
-//! Concurrent in‑memory queue for FRI or SNARK prover jobs
-//! Replaced FriJobManager and SnarkJobManager
+//! Concurrent in‑memory queue for FRI prover work.
+//!
+//! * Incoming jobs are received through via `add_job`.
+//!     No more than `max_assigned_batch_range` batch span is accepted
+//! * Assigned jobs are added to `ProverJobMap` immediately.
+//! * Provers request work via [`pick_next_job`]:
+//!     * If there is an already assigned job that has timed out, it is reassigned.
+//!     * Otherwise, the next job from inbound is assigned and inserted into `ProverJobMap`.
+//! * Fake provers call [`pick_next_job`] with a `min_age` param to avoid taking fresh items,
+//!   letting real provers race first.
+//! * When any proof is submitted (real or fake):
+//!     * It is removed from `ProverJobMap`
+//!     * It is enqueued to the ordered committer as `SignedBatchEnvelope<FriProof>`.
+//!
 
 use crate::prover_api::fri_proof_verifier;
 use crate::prover_api::metrics::{ProverStage, ProverType};
