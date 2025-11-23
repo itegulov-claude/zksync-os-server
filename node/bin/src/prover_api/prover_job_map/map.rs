@@ -182,6 +182,20 @@ impl<T: Clone> ProverJobMap<T> {
                 }
             }
 
+            // Check if this job is timing out (was previously assigned)
+            if let Some(assigned_at) = entry.metadata.assigned_at {
+                if now.duration_since(assigned_at) >= self.assignment_timeout {
+                    tracing::warn!(
+                        batch_number = entry.metadata.batch_number,
+                        previously_assigned_to = ?entry.metadata.assigned_to_prover_id,
+                        timeout_duration = ?self.assignment_timeout,
+                        ?self.prover_stage,
+                        "Job timed out, reassigning to {}",
+                        prover_id
+                    );
+                }
+            }
+
             // Assign job
             entry.metadata.assign(now, prover_id.to_string());
             selected_jobs.push(entry.metadata.clone());
