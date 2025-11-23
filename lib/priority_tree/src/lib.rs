@@ -66,18 +66,67 @@ impl<ReplayStorage: ReadReplay, Finality: ReadFinality, BatchStorage: ReadBatch>
             "adding missing blocks to priority tree"
         );
 
+        let total_blocks = last_executed_block.saturating_sub(initial_block_number);
+        let mut current_l1_priority_id = replay_storage
+            .get_starting_l1_priority_id(initial_block_number)
+            .with_context(|| {
+                format!("cannot re-build priority tree: missing replay block {initial_block_number}")
+            })?;
+
         for block_number in (initial_block_number + 1)..=last_executed_block {
-            let block = replay_storage
-                .get_replay_record(block_number)
-                .with_context(|| {
-                    format!("cannot re-build priority tree: missing replay block {block_number}")
-                })?;
-            for tx in block.transactions {
-                match tx.into_envelope() {
-                    ZkEnvelope::L1(l1_tx) => merkle_tree.push_hash(*l1_tx.hash()),
-                    ZkEnvelope::L2(_) => {}
-                    ZkEnvelope::Upgrade(_) => {}
+            // Print progress every 1000 blocks
+            if (block_number - initial_block_number - 1) % 1000 == 0 {
+                let processed = block_number - initial_block_number - 1;
+                let percentage = if total_blocks > 0 {
+                    (processed as f64 / total_blocks as f64) * 100.0
+                } else {
+                    0.0
+                };
+                tracing::info!(
+                    processed,
+                    total = total_blocks,
+                    percentage = format!("{:.2}%", percentage),
+                    "rebuilding priority tree progress"
+                );
+            }
+
+            // Check if NEXT block has higher starting_l1_priority_id than current
+            // If next block is missing or is the last block, we should process current block
+            let should_process = if block_number < last_executed_block {
+                match replay_storage.get_starting_l1_priority_id(block_number + 1) {
+                    Some(next_l1_priority_id) => next_l1_priority_id > current_l1_priority_id,
+                    None => true, // Next block not available yet, process current
                 }
+            } else {
+                // Always process the last block
+                true
+            };
+
+            // Only read and process the full block if priority ID increased or block is missing
+            if should_process {
+                let block = replay_storage
+                    .get_replay_record(block_number)
+                    .with_context(|| {
+                        format!("cannot re-build priority tree: missing replay block {block_number}")
+                    })?;
+
+                let mut expected_l1_priority_id = current_l1_priority_id;
+                for tx in block.transactions {
+                    match tx.into_envelope() {
+                        ZkEnvelope::L1(l1_tx) => {
+                            let actual_priority_id = l1_tx.priority_id();
+                            anyhow::ensure!(
+                                actual_priority_id == expected_l1_priority_id,
+                                "L1 transaction priority ID mismatch at block {block_number}: expected {expected_l1_priority_id}, got {actual_priority_id}"
+                            );
+                            merkle_tree.push_hash(*l1_tx.hash());
+                            expected_l1_priority_id += 1;
+                        }
+                        ZkEnvelope::L2(_) => {}
+                        ZkEnvelope::Upgrade(_) => {}
+                    }
+                }
+                current_l1_priority_id = expected_l1_priority_id;
             }
         }
 

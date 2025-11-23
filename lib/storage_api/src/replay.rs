@@ -43,6 +43,16 @@ pub trait ReadReplay: Send + Sync + 'static {
     /// * MAY return `Some(_)` for block numbers after latest
     fn get_replay_record(&self, block_number: BlockNumber) -> Option<ReplayRecord>;
 
+    /// Get only the starting_l1_priority_id for a block. Useful for optimizations where the full
+    /// block data is not needed.
+    ///
+    /// This method:
+    /// * MUST be thread-safe
+    /// * MUST return `Some(_)` if [`get_replay_record`](Self::get_replay_record) returns `Some(_)`
+    ///   for the same block number
+    /// * MAY have a more efficient implementation than fetching the full replay record
+    fn get_starting_l1_priority_id(&self, block_number: BlockNumber) -> Option<u64>;
+
     /// Returns the latest (greatest) record's block number.
     ///
     /// This method:

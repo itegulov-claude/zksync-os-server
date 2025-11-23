@@ -197,6 +197,18 @@ impl ReadReplay for BlockReplayStorage {
             .map(|(context, _)| context)
     }
 
+    fn get_starting_l1_priority_id(&self, block_number: BlockNumber) -> Option<u64> {
+        let key = block_number.to_be_bytes();
+        self.db
+            .get_cf(BlockReplayColumnFamily::StartingL1SerialId, &key)
+            .expect("Cannot read from DB")
+            .map(|bytes| {
+                bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
+                    .expect("Failed to deserialize starting_l1_priority_id")
+                    .0
+            })
+    }
+
     fn get_replay_record(&self, block_number: u64) -> Option<ReplayRecord> {
         let key = block_number.to_be_bytes();
         let Some(block_context) = self
