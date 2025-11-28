@@ -42,7 +42,6 @@ pub trait SendToL1:
     const NAME: &'static str;
     const SENT_STAGE: BatchExecutionStage;
     const MINED_STAGE: BatchExecutionStage;
-    const PASSTHROUGH_STAGE: BatchExecutionStage;
     fn solidity_call(&self) -> impl SolCall;
 
     fn blob_sidecar(&self) -> Option<BlobTransactionSidecar> {

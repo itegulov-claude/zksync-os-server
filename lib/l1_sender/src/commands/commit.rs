@@ -26,7 +26,6 @@ impl SendToL1 for CommitCommand {
     const NAME: &'static str = "commit";
     const SENT_STAGE: BatchExecutionStage = BatchExecutionStage::CommitL1TxSent;
     const MINED_STAGE: BatchExecutionStage = BatchExecutionStage::CommitL1TxMined;
-    const PASSTHROUGH_STAGE: BatchExecutionStage = BatchExecutionStage::CommitL1Passthrough;
 
     fn solidity_call(&self) -> impl SolCall {
         IExecutor::commitBatchesSharedBridgeCall::new((

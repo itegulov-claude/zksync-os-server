@@ -263,9 +263,7 @@ async fn process_prepending_passthrough_commands<Input: SendToL1>(
                             "Not actually sending to L1, just passing through"
                         );
                         latency_tracker.enter_state(L1SenderState::WaitingSend);
-                        outbound
-                            .send((*batch).with_stage(Input::PASSTHROUGH_STAGE))
-                            .await?;
+                        outbound.send(*batch).await?;
                     }
                 }
             }
