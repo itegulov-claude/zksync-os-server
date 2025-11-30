@@ -343,8 +343,8 @@ pub struct L1WatcherConfig {
     /// List of L1 transaction hashes to ignore when processing events.
     /// Format: comma-separated hex strings with 0x prefix.
     /// It Should contain l1 commit transactions for batches that were later reverted.
-    #[config(default_t = Vec::new())]
-    pub ignored_l1_tx_hashes: Vec<String>,
+    #[config(default_t = String::default())]
+    pub ignored_l1_tx_hashes: String,
 }
 
 #[derive(Clone, Debug, DescribeConfig, DeserializeConfig)]
@@ -675,7 +675,7 @@ impl From<L1WatcherConfig> for zksync_os_l1_watcher::L1WatcherConfig {
             poll_interval: c.poll_interval,
             ignored_l1_tx_hashes: c
                 .ignored_l1_tx_hashes
-                .iter()
+                .split(",")
                 .filter_map(|s| s.parse().ok())
                 .collect(),
         }
