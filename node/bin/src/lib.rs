@@ -41,6 +41,7 @@ use crate::prover_input_generator::ProverInputGenerator;
 use crate::replay_transport::replay_server;
 use crate::state_initializer::StateInitializer;
 use crate::tree_manager::TreeManager;
+use alloy::consensus::BlobTransactionSidecar;
 use alloy::network::{Ethereum, EthereumWallet};
 use alloy::providers::fillers::{FillProvider, TxFiller};
 use alloy::providers::{Provider, ProviderBuilder, WalletProvider};
@@ -454,6 +455,8 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
 
     tracing::info!("Initializing pubdata price provider");
     let (pubdata_price_sender, pubdata_price_receiver) = watch::channel(None);
+    let (blob_fill_ratio_sender, blob_fill_ratio_receiver) = watch::channel(None);
+    let (sidecar_sender, sidecar_receiver) = tokio::sync::mpsc::channel(10);
     if config.sequencer_config.is_main_node() {
         let gas_adjuster_config = gas_adjuster_config(
             config.gas_adjuster_config.clone(),
@@ -464,6 +467,8 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             l1_provider.clone().erased(),
             gas_adjuster_config,
             pubdata_price_sender,
+            blob_fill_ratio_sender,
+            sidecar_receiver,
         )
         .await
         .unwrap();
@@ -507,6 +512,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         config.sequencer_config.pubdata_price_override,
         config.sequencer_config.native_price_override,
         pubdata_price_receiver,
+        blob_fill_ratio_receiver,
         pending_block_context_sender,
         config.l1_sender_config.pubdata_mode,
     );
@@ -570,6 +576,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             stop_receiver.clone(),
             tx_acceptance_state_sender,
             batcher_prev_batch_info,
+            sidecar_sender,
         )
         .await;
     } else {
@@ -619,6 +626,7 @@ async fn run_main_node_pipeline(
     _stop_receiver: watch::Receiver<bool>,
     tx_acceptance_state_sender: watch::Sender<TransactionAcceptanceState>,
     batcher_prev_batch_info: StoredBatchInfo,
+    sidecar_sender: tokio::sync::mpsc::Sender<BlobTransactionSidecar>,
 ) {
     let starting_batch_number = batcher_prev_batch_info.batch_number + 1;
     let (fri_proving_step, fri_job_manager) = FriProvingPipelineStep::new(
@@ -719,6 +727,7 @@ async fn run_main_node_pipeline(
             batcher_config: config.batcher_config.clone(),
             batch_storage: batch_storage.clone(),
             pubdata_mode: config.l1_sender_config.pubdata_mode,
+            sidecar_sender,
         })
         .pipe(BatchVerificationPipelineStep::new(
             config.batch_verification_config.into(),

@@ -572,6 +572,8 @@ pub struct GasAdjusterConfig {
     pub max_base_fee_samples: usize,
     #[config(default_t = 100)]
     pub num_samples_for_blob_base_fee_estimate: usize,
+    #[config(default_t = 100)]
+    pub max_blob_fill_ratio_samples: usize,
     #[config(default_t = 13 * TimeUnit::Seconds)]
     pub poll_period: Duration,
     #[config(default_t = 1.0)]
@@ -767,6 +769,7 @@ pub fn gas_adjuster_config(
         pubdata_mode,
         max_base_fee_samples: c.max_base_fee_samples,
         num_samples_for_blob_base_fee_estimate: c.num_samples_for_blob_base_fee_estimate,
+        max_blob_fill_ratio_samples: c.max_blob_fill_ratio_samples,
         max_priority_fee_per_gas,
         poll_period: c.poll_period,
         pubdata_pricing_multiplier: c.pubdata_pricing_multiplier,

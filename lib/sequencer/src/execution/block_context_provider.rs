@@ -6,6 +6,7 @@ use alloy::consensus::{Block, BlockBody, Header};
 use alloy::eips::eip4844::FIELD_ELEMENTS_PER_BLOB;
 use alloy::primitives::{Address, BlockHash, TxHash, U128, U256};
 use anyhow::Context as _;
+use num::rational::Ratio;
 use reth_execution_types::ChangedAccount;
 use reth_primitives::SealedBlock;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -49,6 +50,7 @@ pub struct BlockContextProvider<Mempool> {
     pubdata_price_override: Option<U256>,
     native_price_override: Option<U256>,
     pubdata_price_provider: watch::Receiver<Option<u128>>,
+    blob_fill_ratio_provider: watch::Receiver<Option<Ratio<u64>>>,
     pending_block_context_sender: watch::Sender<Option<BlockContext>>,
     pubdata_mode: PubdataMode,
 }
@@ -72,6 +74,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
         pubdata_price_override: Option<U128>,
         native_price_override: Option<U128>,
         pubdata_price_provider: watch::Receiver<Option<u128>>,
+        blob_fill_ratio_provider: watch::Receiver<Option<Ratio<u64>>>,
         pending_block_context_sender: watch::Sender<Option<BlockContext>>,
         pubdata_mode: PubdataMode,
     ) -> Self {
@@ -92,6 +95,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
             pubdata_price_override: pubdata_price_override.map(U256::from),
             native_price_override: native_price_override.map(U256::from),
             pubdata_price_provider,
+            blob_fill_ratio_provider,
             pending_block_context_sender,
             pubdata_mode,
         }
@@ -162,6 +166,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     self.pubdata_price_override,
                     self.pubdata_mode,
                     &self.pubdata_price_provider,
+                    &self.blob_fill_ratio_provider,
                 );
                 let block_context = BlockContext {
                     eip1559_basefee,
@@ -408,6 +413,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
         pubdata_price_override: Option<U256>,
         pubdata_mode: PubdataMode,
         pubdata_price_provider: &watch::Receiver<Option<u128>>,
+        blob_fill_ratio_provider: &watch::Receiver<Option<Ratio<u64>>>,
     ) -> FeeParams {
         const NATIVE_PRICE: u128 = 1_000_000;
         const NATIVE_PER_GAS: u128 = 100;
@@ -436,7 +442,19 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                             .expect("Pubdata price must be available"),
                     );
                     // Final pubdata price is base price + overhead depending on native price.
-                    base_pubdata_price + native_price * U256::from(NATIVE_PER_BLOB_BYTE)
+                    let mut pubdata_price =
+                        base_pubdata_price + native_price * U256::from(NATIVE_PER_BLOB_BYTE);
+
+                    // By default, we assume that blobs are half-filled.
+                    let fill_ratio =
+                        (*blob_fill_ratio_provider.borrow()).unwrap_or_else(|| Ratio::new(1, 2));
+                    // Adjust pubdata price according to blob fill ratio.
+                    // More filled blobs => less pubdata price (since less overhead per byte).
+                    // pubdata_price := pubdata_price / ratio = pubdata_price * denom / numer
+                    pubdata_price *= U256::from(*fill_ratio.denom());
+                    pubdata_price /= U256::from(*fill_ratio.numer());
+
+                    pubdata_price
                 }
             }
             _ => pubdata_price_override.unwrap_or(U256::from(
