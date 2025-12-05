@@ -25,6 +25,13 @@ cargo run --release -- modexp 50
 cargo run --release -- modexp 100
 ```
 
+- set env
+```
+export PRIVATE_KEY=0x7726827caac94a7f9e1b160f7ea819f172f7b6f9d2a97f992c38edeab82d4110
+export PRIVATE_KEY_CLOSE=0xb0056721d6bd8ee20398aeaa1f3529621c7c3711c2f09bdfd0b113554b8866e5
+export RPC_URL=http://localhost:3050 
+```
+
 - `./run.sh &> run.txt`
 - wait for batches to be proven, load prover logs to prover_logs.txt
 - run `python ./process.py ./run.txt ../server_log.txt ./prover_logs.txt`
