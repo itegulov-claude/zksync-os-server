@@ -48,10 +48,10 @@ pub enum ZkReceiptEnvelope<T = Log, U = L2ToL1Log> {
     /// [EIP-7702]: https://eips.ethereum.org/EIPS/eip-7702
     #[serde(rename = "0x4", alias = "0x04")]
     Eip7702(ReceiptWithBloom<ZkReceipt<T, U>>),
-    /// Receipt envelope with type flag 255, containing an L1->L2 priority transaction receipt.
+    /// Receipt envelope with type flag 127, containing an L1->L2 priority transaction receipt.
     #[serde(rename = "0x7f")]
     L1(ReceiptWithBloom<ZkReceipt<T, U>>),
-    /// Receipt envelope with type flag 254, containing an upgrade transaction receipt.
+    /// Receipt envelope with type flag 126, containing an upgrade transaction receipt.
     #[serde(rename = "0x7e")]
     Upgrade(ReceiptWithBloom<ZkReceipt<T, U>>),
     /// Receipt envelope with type flag 125, containing an interop transaction receipt.

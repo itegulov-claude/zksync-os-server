@@ -20,8 +20,8 @@ use std::hash::Hash;
 // `TransactionEnvelope` derive macro below depends on this being present
 use alloy::rlp as alloy_rlp;
 
-/// ZKsync OS transaction envelope describing both [EIP-2718] envelopes and custom L1->L2 transaction
-/// envelope.
+/// ZKsync OS transaction envelope describing [EIP-2718] envelopes, custom L1->L2 transaction
+/// envelope and custom transaction envelope for publishing interop roots.
 ///
 /// [EIP-2718]: https://eips.ethereum.org/EIPS/eip-2718
 #[derive(Clone, Debug, TransactionEnvelope)]

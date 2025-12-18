@@ -83,7 +83,6 @@ impl<T: SystemTxType> Transaction for SystemTransaction<T> {
     }
 
     fn value(&self) -> U256 {
-        // todo: check if this is correct
         U256::ZERO
     }
 
