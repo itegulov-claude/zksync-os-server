@@ -223,6 +223,13 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     self.previous_block_timestamp,
                     record.previous_block_timestamp
                 );
+
+                let is_interop_only_block = record
+                    .transactions
+                    .first()
+                    .map(|tx| matches!(tx.envelope(), ZkEnvelope::InteropRoots(_)))
+                    .unwrap_or(false);
+
                 PreparedBlockCommand {
                     block_context: record.block_context,
                     seal_policy: SealPolicy::UntilExhausted {
@@ -237,7 +244,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     expected_block_output_hash: Some(record.block_output_hash),
                     previous_block_timestamp: self.previous_block_timestamp,
                     force_preimages: record.force_preimages,
-                    is_interop_only_block: false,
+                    is_interop_only_block,
                 }
             }
             BlockCommand::Rebuild(rebuild) => {
@@ -304,6 +311,11 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     }
                 };
 
+                let is_interop_only_block = txs
+                    .first()
+                    .map(|tx| matches!(tx.envelope(), ZkEnvelope::InteropRoots(_)))
+                    .unwrap_or(false);
+
                 PreparedBlockCommand {
                     block_context,
                     tx_source: Box::pin(ReplayTxStream::new(txs)),
@@ -318,7 +330,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     expected_block_output_hash: None,
                     previous_block_timestamp: self.previous_block_timestamp,
                     force_preimages: rebuild.replay_record.force_preimages,
-                    is_interop_only_block: false,
+                    is_interop_only_block,
                 }
             }
         };
