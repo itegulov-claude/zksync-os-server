@@ -12,7 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, watch};
 use zksync_os_interface::types::{BlockContext, BlockHashes, BlockOutput};
 use zksync_os_mempool::{
-    CanonicalStateUpdate, L2TransactionPool, PeekedTxType, PoolUpdateKind, ReplayTxStream, best_transactions
+    CanonicalStateUpdate, L2TransactionPool, PeekedTxType, PoolUpdateKind, ReplayTxStream,
+    best_transactions,
 };
 use zksync_os_storage_api::ReplayRecord;
 use zksync_os_types::{
@@ -126,7 +127,6 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                 }
 
                 let timestamp = (millis_since_epoch() / 1000) as u64;
-
 
                 let is_interop_only_block = matches!(peeked_tx, Some(PeekedTxType::Interop));
 

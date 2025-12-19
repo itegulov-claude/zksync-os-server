@@ -10,6 +10,12 @@ pub const BOOTLOADER_FORMAL_ADDRESS: Address =
 
 pub type InteropRootsEnvelope = SystemTransactionEnvelope<InteropRootsTxType>;
 
+impl InteropRootsEnvelope {
+    pub fn interop_roots_count(&self) -> u64 {
+        unimplemented!("implement me");
+    }
+}
+
 pub trait SystemTxType: Clone + Send + Sync + std::fmt::Debug + 'static {
     const TX_TYPE: u8;
 }

@@ -3,7 +3,9 @@ use zk_ee::{common_structs::MAX_NUMBER_OF_LOGS, system::MAX_NATIVE_COMPUTATIONAL
 use zksync_os_interface::types::BlockOutput;
 use zksync_os_l1_sender::batcher_metrics::BATCHER_METRICS;
 use zksync_os_storage_api::ReplayRecord;
-use zksync_os_types::{ProtocolSemanticVersion, ZkTxType};
+use zksync_os_types::{ProtocolSemanticVersion, ZkEnvelope, ZkTxType};
+
+pub const MAX_INTEROP_ROOTS_PER_BATCH: u64 = 1000;
 
 #[derive(Default, Clone)]
 pub(crate) struct BatchInfoAccumulator {
@@ -13,6 +15,7 @@ pub(crate) struct BatchInfoAccumulator {
     pub l2_to_l1_logs_count: u64,
     pub block_count: u64,
     pub has_upgrade_tx: bool,
+    pub interop_roots_count: u64,
 
     pub protocol_versions: HashSet<ProtocolSemanticVersion>,
     pub execution_versions: HashSet<u32>,
@@ -44,6 +47,16 @@ impl BatchInfoAccumulator {
             .insert(replay_record.block_context.execution_version);
         self.protocol_versions
             .insert(replay_record.protocol_version.clone());
+        self.interop_roots_count += replay_record
+            .transactions
+            .iter()
+            .map(|tx| match tx.inner.inner() {
+                ZkEnvelope::InteropRoots(interop_roots_tx) => {
+                    interop_roots_tx.interop_roots_count()
+                }
+                _ => 0,
+            })
+            .sum::<u64>();
 
         if !self.has_upgrade_tx
             && replay_record
@@ -112,6 +125,12 @@ impl BatchInfoAccumulator {
         if self.execution_versions.len() > 1 {
             BATCHER_METRICS.seal_reason[&"execution_version_change"].inc();
             tracing::debug!("Batcher: ZKsync OS version changed within the batch");
+            return true;
+        }
+
+        if self.interop_roots_count > MAX_INTEROP_ROOTS_PER_BATCH {
+            BATCHER_METRICS.seal_reason[&"interop_roots"].inc();
+            tracing::debug!("Batcher: reached max number of interop roots per batch");
             return true;
         }
 

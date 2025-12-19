@@ -11,7 +11,8 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 use zksync_os_types::{
-    InteropRootsEnvelope, L1PriorityEnvelope, L2Envelope, UpgradeTransaction, ZkTransaction, ZkTxType,
+    InteropRootsEnvelope, L1PriorityEnvelope, L2Envelope, UpgradeTransaction, ZkTransaction,
+    ZkTxType,
 };
 
 pub trait TxStream: Stream {
@@ -158,11 +159,15 @@ impl BestTransactionsStream<'_> {
                 ZkTxType::InteropRoots => {
                     self.first_tx_is_interop = true;
                     Some(PeekedTxType::Interop)
-                },
-                ZkTxType::Upgrade => Some(PeekedTxType::Upgrade(self.peeked_upgrade_info.clone().expect("upgrade transaction should be available"))),
+                }
+                ZkTxType::Upgrade => Some(PeekedTxType::Upgrade(
+                    self.peeked_upgrade_info
+                        .clone()
+                        .expect("upgrade transaction should be available"),
+                )),
                 ZkTxType::L1 => Some(PeekedTxType::Regular),
                 ZkTxType::L2(_) => Some(PeekedTxType::Regular),
-            }
+            },
         }
     }
 }

@@ -62,8 +62,6 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
     };
     let mut deadline: Option<Pin<Box<Sleep>>> = None; // will arm after 1st tx success
 
-    let interop_roots_amount = 0;
-
     /* ---------- main loop ------------------------------------------ */
     // seal_reason must only be used for observability - handling must remain generic
     let seal_reason = loop {
@@ -155,10 +153,6 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
                                             tracing::info!(block = ctx.block_number, "upgrade tx executed, but seal policy requires full exhaustion");
                                         }
                                     }
-                                }
-
-                                if tx_type == ZkTxType::InteropRoots {
-                                    interop_roots_amount += tx;
                                 }
 
                                 match command.seal_policy {
