@@ -12142,6 +12142,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "zksync_os_interop_watcher"
+version = "0.12.0-non-semver-compat"
+dependencies = [
+ "alloy",
+ "anyhow",
+ "async-trait",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
+ "futures",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "vise",
+ "zksync_os_api",
+ "zksync_os_batch_types",
+ "zksync_os_contract_interface",
+ "zksync_os_storage_api",
+ "zksync_os_types",
+]
+
+[[package]]
 name = "zksync_os_l1_sender"
 version = "0.12.0-non-semver-compat"
 dependencies = [

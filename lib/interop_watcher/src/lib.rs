@@ -1,10 +1,12 @@
+use std::time::Duration;
+
 use alloy::rpc::types::Filter;
 use alloy::sol_types::SolEvent;
 use alloy::{
     primitives::Address,
     providers::{DynProvider, Provider},
 };
-use zksync_os_contract_interface::{InteropRoot, NewInteropRoot};
+use zksync_os_contract_interface::{InteropRoot};
 pub const INTEROP_ROOTS_PER_IMPORT: u64 = 100;
 
 pub struct L1InteropRootsWatcher {
@@ -13,6 +15,10 @@ pub struct L1InteropRootsWatcher {
     provider: DynProvider,
     // first number is block number, second is log index
     next_log_to_scan_from: (u64, u64),
+
+    poll_interval: Duration,
+
+    output: mpsc::Sender<InteropRootsEnvelope>,
 }
 
 impl L1InteropRootsWatcher {
@@ -20,15 +26,28 @@ impl L1InteropRootsWatcher {
         provider: DynProvider,
         contract_address: Address,
         next_log_to_scan_from: (u64, u64),
+        poll_interval: Duration,
+        output: mpsc::Sender<InteropRootsEnvelope>,
     ) -> Self {
         Self {
             provider,
             contract_address,
             next_log_to_scan_from,
+            poll_interval,
+            output,
         }
     }
 
-    pub async fn fetch_events(
+    pub async fn run(mut self) -> Result<(), InteropWatcherError> {
+        let mut timer = tokio::time::interval(self.poll_interval);
+        while self.should_continue() {
+            timer.tick().await;
+            self.poll().await?;
+        }
+        Ok(())
+    }
+
+     async fn fetch_events(
         &mut self,
         from_block: u64,
         to_block: u64,
@@ -39,29 +58,14 @@ impl L1InteropRootsWatcher {
             .to_block(to_block)
             .address(self.contract_address)
             .event_signature(NewInteropRoot::SIGNATURE_HASH);
-        let logs = self.provider.get_logs(&filter).await?;
-
-        // comment: a bit more rust-idiomatic way, but it's slower and doesn't handle updating the next_log_to_scan_from
-        // let interop_roots = logs
-        //     .into_iter()
-        //     .filter(|log| {
-        //         !(log.block_number.unwrap() == from_block
-        //             && log.log_index.unwrap() <= start_log_index)
-        //     })
-        //     .map(|log| {
-        //         NewInteropRoot::decode_log(&log.inner)
-        //             .expect("Failed to decode log")
-        //             .data
-        //     })
-        //     .take(INTEROP_ROOTS_PER_IMPORT as usize)
-        //     .collect::<Vec<NewInteropRoot>>();
+        let logs = self.provider.get_logs(&filter).
 
         let mut interop_roots = Vec::new();
         for log in logs {
             let log_block_number = log.block_number.unwrap();
-            let log_log_index = log.log_index.unwrap();
+            let log_index_in_block = log.log_index.unwrap();
 
-            if log_block_number == from_block && log_log_index <= start_log_index {
+            if log_block_number == from_block && log_index_in_block <= start_log_index {
                 continue;
             }
             let interop_root_event = NewInteropRoot::decode_log(&log.inner)?.data;
@@ -77,17 +81,24 @@ impl L1InteropRootsWatcher {
             };
             interop_roots.push(interop_root);
 
-            self.next_log_to_scan_from = (log_block_number, log_log_index + 1);
+            self.next_log_to_scan_from = (log_block_number, log_index_in_block + 1);
 
             if interop_roots.len() >= INTEROP_ROOTS_PER_IMPORT as usize {
                 break;
             }
         }
 
-        if interop_roots.len() < INTEROP_ROOTS_PER_IMPORT as usize {
+        // if we didn't get enough interop roots, it should be safe to continue from the last block we already scanned
+        // edge case would be if the last root we included was already in the last block, then we should leave the value as is(it was updated before)
+        if interop_roots.len() < INTEROP_ROOTS_PER_IMPORT as usize  && self.next_log_to_scan_from.0 < to_block {
             self.next_log_to_scan_from = (to_block, 0);
         }
 
+
         Ok(interop_roots)
+    }
+
+    async fn poll(&mut self) -> Result<(), InteropWatcherError> {
+        let latest_block = self.provider.get_block_number().await?;
     }
 }
