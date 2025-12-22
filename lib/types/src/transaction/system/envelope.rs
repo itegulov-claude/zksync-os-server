@@ -2,10 +2,9 @@ use alloy::consensus::transaction::{RlpEcdsaDecodableTx, RlpEcdsaEncodableTx};
 use alloy::consensus::{Transaction, Typed2718};
 use alloy::eips::eip2718::{Eip2718Error, Eip2718Result};
 use alloy::eips::{Decodable2718, Encodable2718};
-use alloy::primitives::ChainId;
 use alloy::primitives::{B256, Bytes, TxKind, U256};
+use alloy::primitives::{ChainId, keccak256};
 use alloy::rpc::types::{AccessList, SignedAuthorization};
-use alloy::signers::Signature;
 use alloy_rlp::{BufMut, Encodable};
 use serde::{Deserialize, Serialize};
 
@@ -14,12 +13,13 @@ use crate::transaction::system::tx::SystemTransaction;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct SystemTransactionEnvelope<T: SystemTxType> {
+    pub hash: B256,
     pub inner: SystemTransaction<T>,
 }
 
 impl<T: SystemTxType> SystemTransactionEnvelope<T> {
     pub fn hash(&self) -> &B256 {
-        todo!("Should it be something like `keccak256(self.abi_encode())`?")
+        &self.hash
     }
 }
 
@@ -43,7 +43,9 @@ impl<T: SystemTxType> RlpEcdsaDecodableTx for SystemTransactionEnvelope<T> {
     const DEFAULT_TX_TYPE: u8 = T::TX_TYPE;
 
     fn rlp_decode_fields(buf: &mut &[u8]) -> alloy::rlp::Result<Self> {
+        let transaction = SystemTransaction::<T>::rlp_decode_fields(buf)?;
         Ok(Self {
+            hash: keccak256(&transaction.encoded_2718()),
             inner: SystemTransaction::rlp_decode_fields(buf)?,
         })
     }
@@ -61,26 +63,28 @@ impl<T: SystemTxType> Encodable for SystemTransactionEnvelope<T> {
 
 impl<T: SystemTxType> Encodable2718 for SystemTransactionEnvelope<T> {
     fn encode_2718_len(&self) -> usize {
-        self.inner
-            .eip2718_encoded_length(&Signature::new(U256::ZERO, U256::ZERO, false))
+        self.inner.encode_2718_len()
     }
 
     fn encode_2718(&self, out: &mut dyn BufMut) {
-        self.inner
-            .eip2718_encode(&Signature::new(U256::ZERO, U256::ZERO, false), out)
+        self.inner.encode_2718(out);
     }
 }
 
 impl<T: SystemTxType> Decodable2718 for SystemTransactionEnvelope<T> {
     fn typed_decode(ty: u8, buf: &mut &[u8]) -> Eip2718Result<Self> {
-        let decoded = SystemTransaction::rlp_decode_signed(buf)?;
-
-        if decoded.ty() != ty {
+        if ty != T::TX_TYPE {
             return Err(Eip2718Error::UnexpectedType(ty));
         }
 
+        let transaction = SystemTransaction::<T>::rlp_decode(buf)
+            .map_err(|_| Eip2718Error::RlpError(alloy::rlp::Error::Custom("decode failed")))?;
+
+        let hash = transaction.calculate_hash();
+
         Ok(Self {
-            inner: decoded.into_parts().0,
+            hash,
+            inner: transaction,
         })
     }
 
