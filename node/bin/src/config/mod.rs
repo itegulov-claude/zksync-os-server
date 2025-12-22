@@ -460,7 +460,7 @@ pub struct L1WatcherConfig {
     pub max_blocks_to_process: u64,
 
     /// How often to poll L1 for new priority requests.
-    #[config(default_t = 100 * TimeUnit::Millis)]
+    #[config(default_t = 500 * TimeUnit::Millis)]
     pub poll_interval: Duration,
 }
 
