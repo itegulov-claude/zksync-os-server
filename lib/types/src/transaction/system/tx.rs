@@ -1,7 +1,8 @@
 use alloy::consensus::transaction::{RlpEcdsaDecodableTx, RlpEcdsaEncodableTx};
 use alloy::consensus::{Transaction, Typed2718};
-use alloy::primitives::ChainId;
+use alloy::eips::Encodable2718;
 use alloy::primitives::{Address, B256, Bytes, TxKind, U256};
+use alloy::primitives::{ChainId, keccak256};
 use alloy::rpc::types::{AccessList, SignedAuthorization};
 use alloy_rlp::{BufMut, Decodable, Encodable};
 use serde::{Deserialize, Serialize};
@@ -19,17 +20,9 @@ pub struct SystemTransaction<T: SystemTxType> {
     pub marker: std::marker::PhantomData<T>,
 }
 
-enum ServiceTxField<'b> {
-    U64(u64),
-    Bytes(&'b [u8]),
-}
-
-impl<'b> Encodable for ServiceTxField<'b> {
-    fn encode(&self, out: &mut dyn BufMut) {
-        match self {
-            ServiceTxField::U64(v) => v.encode(out),
-            ServiceTxField::Bytes(b) => (*b).encode(out),
-        }
+impl<T: SystemTxType> SystemTransaction<T> {
+    pub fn calculate_hash(&self) -> B256 {
+        keccak256(&self.encoded_2718())
     }
 }
 
@@ -109,6 +102,19 @@ impl<T: SystemTxType> Typed2718 for SystemTransaction<T> {
     }
 }
 
+impl<T: SystemTxType> Encodable2718 for SystemTransaction<T> {
+    fn encode_2718_len(&self) -> usize {
+        1 + self.length()
+    }
+
+    fn encode_2718(&self, out: &mut dyn BufMut) {
+        let mut rlp_body = Vec::new();
+        Encodable::encode(&self, &mut rlp_body);
+        out.put_u8(T::TX_TYPE);
+        out.put_slice(&rlp_body);
+    }
+}
+
 impl<T: SystemTxType> RlpEcdsaEncodableTx for SystemTransaction<T> {
     fn rlp_encoded_fields_length(&self) -> usize {
         self.gas_limit.length() + self.to.length() + self.input.length()
@@ -132,6 +138,20 @@ impl<T: SystemTxType> RlpEcdsaDecodableTx for SystemTransaction<T> {
 
             marker: std::marker::PhantomData,
         })
+    }
+}
+
+enum ServiceTxField<'b> {
+    U64(u64),
+    Bytes(&'b [u8]),
+}
+
+impl<'b> Encodable for ServiceTxField<'b> {
+    fn encode(&self, out: &mut dyn BufMut) {
+        match self {
+            ServiceTxField::U64(v) => v.encode(out),
+            ServiceTxField::Bytes(b) => (*b).encode(out),
+        }
     }
 }
 

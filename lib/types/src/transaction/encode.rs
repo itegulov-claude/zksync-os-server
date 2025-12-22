@@ -7,7 +7,6 @@ use alloy::consensus::Transaction;
 use alloy::eips::Encodable2718;
 use alloy::primitives::{Address, B256, U256};
 use alloy::sol_types::SolValue;
-use alloy_rlp::Encodable;
 use zksync_os_interface::traits::EncodedTx;
 
 /// A transaction that can be encoded in ZKsync OS generic transaction format.
@@ -27,12 +26,7 @@ impl<T: L1TxType> ZksyncOsEncode for L1Envelope<T> {
 
 impl<T: SystemTxType> ZksyncOsEncode for SystemTransactionEnvelope<T> {
     fn encode(self) -> EncodedTx {
-        let mut rlp_body = Vec::new();
-        Encodable::encode(&self.inner, &mut rlp_body);
-        let mut out = Vec::with_capacity(1 + rlp_body.len());
-        out.push(T::TX_TYPE);
-        out.extend_from_slice(&rlp_body);
-        EncodedTx::Rlp(out, BOOTLOADER_FORMAL_ADDRESS)
+        EncodedTx::Rlp(self.encoded_2718(), BOOTLOADER_FORMAL_ADDRESS)
     }
 }
 

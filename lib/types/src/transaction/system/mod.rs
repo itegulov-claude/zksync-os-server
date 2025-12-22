@@ -23,13 +23,16 @@ impl InteropRootsEnvelope {
         }
         .abi_encode();
 
+        let transaction = SystemTransaction {
+            gas_limit: 0,
+            to: L2_INTEROP_ROOT_STORAGE_ZKSYNC_OS_ADDRESS,
+            input: Bytes::from(calldata),
+            marker: PhantomData,
+        };
+
         Self {
-            inner: SystemTransaction {
-                gas_limit: 0,
-                to: L2_INTEROP_ROOT_STORAGE_ZKSYNC_OS_ADDRESS,
-                input: Bytes::from(calldata),
-                marker: PhantomData,
-            },
+            hash: transaction.calculate_hash(),
+            inner: transaction,
         }
     }
 
