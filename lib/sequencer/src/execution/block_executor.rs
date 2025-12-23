@@ -7,6 +7,7 @@ use alloy::consensus::Transaction;
 use alloy::primitives::TxHash;
 use futures::StreamExt;
 use std::pin::Pin;
+use alloy::hex;
 use tokio::time::Sleep;
 use vise::EncodeLabelValue;
 use zksync_os_interface::error::InvalidTransaction;
@@ -16,12 +17,27 @@ use zksync_os_storage_api::{
     MeteredViewState, OverriddenStateView, ReadStateHistory, ReplayRecord, WriteState,
 };
 use zksync_os_types::{ZkTransaction, ZkTxType, ZksyncOsEncode};
+use zksync_os_interface::traits::EncodedTx;
 // Note that this is a pure function without a container struct (e.g. `struct BlockExecutor`)
 // MAINTAIN this to ensure the function is completely stateless - explicit or implicit.
 
 // a side effect of this is that it's harder to pass config values (normally we'd just pass the whole config object)
 // please be mindful when adding new parameters here
 
+struct HexEncodedTx<'a>(&'a EncodedTx);
+
+impl<'a> std::fmt::Display for HexEncodedTx<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            EncodedTx::Abi(bytes) => {
+                write!(f, "Abi(0x{})", hex::encode(bytes))
+            }
+            EncodedTx::Rlp(bytes, addr) => {
+                write!(f, "Rlp(0x{}, {:?})", hex::encode(bytes), addr)
+            }
+        }
+    }
+}
 pub async fn execute_block<R: ReadStateHistory + WriteState>(
     mut command: PreparedBlockCommand<'_>,
     state: R,
@@ -95,6 +111,7 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
                             cumulative_gas_used_before=cumulative_gas_used,
                             gas_limit=tx.inner.gas_limit(),
                             signer=?tx.inner.signer(),
+                            rlp_encoded = %HexEncodedTx(&tx.clone().encode()),
                             "Executing transaction..."
                         );
                         all_processed_txs.push(tx.clone());
