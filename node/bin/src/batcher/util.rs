@@ -29,10 +29,15 @@ pub async fn load_genesis_stored_batch_info(
 
     let mut hasher = Blake2s256::new();
     hasher.update(genesis_root_info.0.as_slice());
+    println!("genesis_root_info.0: {:?}", genesis_root_info.0);
     hasher.update(genesis_root_info.1.to_be_bytes());
+    println!("genesis_root_info.1: {:?}", genesis_root_info.1);
     hasher.update(number.to_be_bytes());
+    println!("number: {:?}", number);
     hasher.update(last_256_block_hashes_blake);
+    println!("last_256_block_hashes_blake: {:?}", last_256_block_hashes_blake);
     hasher.update(timestamp.to_be_bytes());
+    println!("timestamp: {:?}", timestamp);
     let state_commitment = B256::from_slice(&hasher.finalize());
 
     anyhow::ensure!(
