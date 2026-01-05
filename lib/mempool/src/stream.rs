@@ -83,7 +83,7 @@ impl Stream for BestTransactionsStream<'_> {
                 }
             }
 
-            if this.first_tx_is_interop {
+            if !this.txs_already_provided || this.first_tx_is_interop {
                 // todo: ensure this is correct ordering of transactions
                 match this.interop_transactions.poll_recv(cx) {
                     Poll::Ready(Some(tx)) => return Poll::Ready(Some(ZkTransaction::from(tx))),

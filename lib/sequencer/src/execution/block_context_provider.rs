@@ -174,8 +174,15 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     self.pubdata_mode,
                     &self.pubdata_price_provider,
                 );
+
+                let base_fee = if is_interop_only_block {
+                    U256::ZERO
+                } else {
+                    eip1559_basefee
+                };
+
                 let block_context = BlockContext {
-                    eip1559_basefee,
+                    eip1559_basefee: base_fee,
                     native_price,
                     pubdata_price,
                     block_number: produce_command.block_number,

@@ -38,6 +38,11 @@ impl L1InteropRootsWatcher {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get message root: {}", e))?;
 
+        tracing::info!(
+            contract_address = %contract_address,
+            "L1InteropRootsWatcher initialized"
+        );
+
         Ok(Self {
             provider,
             contract_address,
@@ -129,10 +134,18 @@ impl L1InteropRootsWatcher {
         // let interop_roots_envelope = InteropRootsEnvelope::from_interop_roots(interop_roots);
         // self.output.send(interop_roots_envelope).await?;
 
+        tracing::warn!(
+            interop_roots_count = interop_roots.len(),
+            from_block,
+            latest_block,
+            "Fetched interop roots"
+        );
+
         // temporary implementation where we send each interop root separately
         for interop_root in interop_roots {
             let interop_root_envelope = InteropRootsEnvelope::from_interop_root(interop_root);
             self.output.send(interop_root_envelope).await?;
+            tracing::warn!("Sent interop root");
         }
 
         Ok(())

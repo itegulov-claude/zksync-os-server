@@ -35,7 +35,10 @@ pub async fn load_genesis_stored_batch_info(
     hasher.update(number.to_be_bytes());
     println!("number: {:?}", number);
     hasher.update(last_256_block_hashes_blake);
-    println!("last_256_block_hashes_blake: {:?}", last_256_block_hashes_blake);
+    println!(
+        "last_256_block_hashes_blake: {:?}",
+        last_256_block_hashes_blake
+    );
     hasher.update(timestamp.to_be_bytes());
     println!("timestamp: {:?}", timestamp);
     let state_commitment = B256::from_slice(&hasher.finalize());

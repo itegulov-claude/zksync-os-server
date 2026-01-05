@@ -194,10 +194,14 @@ impl<T: SystemTxType> From<SystemTransactionEnvelope<T>> for TransactionData {
             tx_type: U256::from(T::TX_TYPE),
             from: BOOTLOADER_FORMAL_ADDRESS,
             to: system_tx.to,
-            gas_limit: U256::from(system_tx.gas_limit),
+            gas_limit: U256::from(system_tx.gas_limit()),
             pubdata_price_limit: U256::from(0),
             max_fee_per_gas: U256::from(system_tx.max_fee_per_gas()),
-            max_priority_fee_per_gas: U256::from(system_tx.max_priority_fee_per_gas().unwrap_or(0)),
+            max_priority_fee_per_gas: U256::from(
+                system_tx
+                    .max_priority_fee_per_gas()
+                    .unwrap_or_else(|| system_tx.max_fee_per_gas()),
+            ),
             paymaster: Address::ZERO,
             nonce: U256::from(system_tx.nonce()),
             value: U256::from(system_tx.value()),

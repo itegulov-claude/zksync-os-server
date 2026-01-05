@@ -15,6 +15,8 @@ pub const BOOTLOADER_FORMAL_ADDRESS: Address =
 pub const L2_INTEROP_ROOT_STORAGE_ZKSYNC_OS_ADDRESS: Address =
     address!("0x0000000000000000000000000000000000010008");
 
+const DEFAULT_GAS_LIMIT: u64 = 72_000_000;
+
 pub type InteropRootsEnvelope = SystemTransactionEnvelope<InteropRootsTxType>;
 
 impl InteropRootsEnvelope {
@@ -27,7 +29,8 @@ impl InteropRootsEnvelope {
         .abi_encode();
 
         let transaction = SystemTransaction {
-            gas_limit: 0,
+            // todo: set some real value maybe?
+            gas_limit: DEFAULT_GAS_LIMIT,
             to: L2_INTEROP_ROOT_STORAGE_ZKSYNC_OS_ADDRESS,
             input: Bytes::from(calldata),
             marker: PhantomData,
