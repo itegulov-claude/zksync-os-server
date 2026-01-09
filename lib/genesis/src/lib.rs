@@ -116,6 +116,8 @@ pub struct Genesis {
     state: OnceCell<GenesisState>,
     genesis_upgrade_tx: OnceCell<GenesisUpgradeTxInfo>,
     chain_id: u64,
+    // TODO: think
+    code_size_limit: Option<u32>,
 }
 
 impl Debug for Genesis {
@@ -134,6 +136,7 @@ impl Genesis {
         input_source: Arc<dyn GenesisInputSource>,
         zk_chain: ZkChain<DynProvider>,
         chain_id: u64,
+        code_size_limit: Option<u32>,
     ) -> Self {
         Self {
             input_source,
@@ -141,12 +144,13 @@ impl Genesis {
             state: OnceCell::new(),
             genesis_upgrade_tx: OnceCell::new(),
             chain_id,
+            code_size_limit,
         }
     }
 
     pub async fn state(&self) -> &GenesisState {
         self.state
-            .get_or_try_init(|| build_genesis(self.input_source.as_ref(), self.chain_id))
+            .get_or_try_init(|| build_genesis(self.input_source.as_ref(), self.chain_id, self.code_size_limit))
             .await
             .expect("Failed to build genesis state")
     }
@@ -200,6 +204,7 @@ fn account_properties_flat_key(address: Address) -> B256 {
 async fn build_genesis(
     genesis_input_source: &dyn GenesisInputSource,
     chain_id: u64,
+    code_size_limit: Option<u32>,
 ) -> anyhow::Result<GenesisState> {
     let genesis_input = genesis_input_source.genesis_input().await?;
 
@@ -292,6 +297,8 @@ async fn build_genesis(
         mix_hash: U256::ZERO,
         execution_version: genesis_input.execution_version,
         blob_fee: U256::ZERO,
+        // TODO: think about it
+        code_size_limit,
     };
 
     Ok(GenesisState {

@@ -214,6 +214,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         genesis_input_source.clone(),
         l1_state.diamond_proxy.clone(),
         chain_id,
+        config.sequencer_config.code_size_limit,
     );
 
     tracing::info!("Initializing BlockReplayStorage");
@@ -534,6 +535,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         blob_fill_ratio_receiver,
         last_constructed_block_ctx_sender,
         config.l1_sender_config.pubdata_mode,
+        config.sequencer_config.code_size_limit,
     );
 
     // ========== Start L1 Upgrade Watcher ===========
@@ -753,6 +755,8 @@ async fn run_main_node_pipeline(
             pubdata_mode: config.l1_sender_config.pubdata_mode,
             sidecar_sender,
             committed_batches: batch_ranges_for_batcher,
+            // TODO: probably better to pass from blocks output and seal based on it
+            code_size_limit: config.sequencer_config.code_size_limit,
         })
         .pipe(BatchVerificationPipelineStep::new(
             config.batch_verification_config.into(),

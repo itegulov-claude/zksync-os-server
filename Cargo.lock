@@ -2206,19 +2206,19 @@ dependencies = [
 [[package]]
 name = "basic_bootloader"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "arrayvec 0.7.6",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "cfg-if",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "paste",
  "ruint",
  "strum_macros",
- "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
 ]
 
 [[package]]
@@ -2296,27 +2296,27 @@ dependencies = [
 [[package]]
 name = "basic_system"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "arrayvec 0.7.6",
  "cfg-if",
  "const-hex",
  "const_for",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "either",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "modexp 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "modexp 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "num-bigint 0.4.6",
  "num-traits",
  "paste",
  "rand 0.9.2",
  "ruint",
  "serde",
- "storage_models 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "storage_models 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "strum_macros",
  "zerocopy",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
 ]
 
 [[package]]
@@ -3023,18 +3023,18 @@ dependencies = [
 [[package]]
 name = "callable_oracles"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "alloy-consensus",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "c-kzg",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "num-bigint 0.3.3",
  "num-traits",
- "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "risc_v_simulator 0.1.0 (git+https://github.com/matter-labs/zksync-airbender?tag=v0.4.3)",
  "ruint",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
 ]
 
 [[package]]
@@ -3750,7 +3750,7 @@ dependencies = [
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -3909,7 +3909,7 @@ source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.4#1ae23057162a34
 [[package]]
 name = "cycle_marker"
 version = "0.0.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 
 [[package]]
 name = "darling"
@@ -4460,7 +4460,7 @@ dependencies = [
  "ruint",
  "strum_macros",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.0.26-rc2)",
- "zksync_os_evm_errors",
+ "zksync_os_evm_errors 0.0.10",
 ]
 
 [[package]]
@@ -4476,7 +4476,7 @@ dependencies = [
  "ruint",
  "strum_macros",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
- "zksync_os_evm_errors",
+ "zksync_os_evm_errors 0.0.10",
 ]
 
 [[package]]
@@ -4492,23 +4492,23 @@ dependencies = [
  "ruint",
  "strum_macros",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
- "zksync_os_evm_errors",
+ "zksync_os_evm_errors 0.0.10",
 ]
 
 [[package]]
 name = "evm_interpreter"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "arrayvec 0.7.6",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "either",
  "paste",
  "ruint",
  "strum_macros",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "zksync_os_evm_errors",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "zksync_os_evm_errors 0.0.12",
 ]
 
 [[package]]
@@ -4879,8 +4879,8 @@ dependencies = [
  "serde",
  "strum_macros",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.0.26-rc2)",
- "zksync_os_evm_errors",
- "zksync_os_interface",
+ "zksync_os_evm_errors 0.0.10",
+ "zksync_os_interface 0.0.10",
  "zksync_os_runner 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.0.26-rc2)",
 ]
 
@@ -4904,8 +4904,8 @@ dependencies = [
  "strum_macros",
  "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
- "zksync_os_evm_errors",
- "zksync_os_interface",
+ "zksync_os_evm_errors 0.0.10",
+ "zksync_os_interface 0.0.10",
  "zksync_os_runner 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
 ]
 
@@ -4929,34 +4929,34 @@ dependencies = [
  "strum_macros",
  "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
- "zksync_os_evm_errors",
- "zksync_os_interface",
+ "zksync_os_evm_errors 0.0.10",
+ "zksync_os_interface 0.0.10",
  "zksync_os_runner 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
 ]
 
 [[package]]
 name = "forward_system"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "alloy",
  "arrayvec 0.7.6",
- "basic_bootloader 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_bootloader 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "bincode 1.3.3",
- "callable_oracles 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "callable_oracles 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "hex",
- "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "paste",
  "ruint",
  "serde",
  "strum_macros",
- "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "zksync_os_evm_errors",
- "zksync_os_interface",
- "zksync_os_runner 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "zksync_os_evm_errors 0.0.12",
+ "zksync_os_interface 0.0.12",
+ "zksync_os_runner 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
 ]
 
 [[package]]
@@ -6746,7 +6746,7 @@ source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.4#1ae23057162a34
 [[package]]
 name = "modexp"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 
 [[package]]
 name = "modular-bitfield"
@@ -7320,10 +7320,10 @@ dependencies = [
 [[package]]
 name = "oracle_provider"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "risc_v_simulator 0.1.0 (git+https://github.com/matter-labs/zksync-airbender?tag=v0.4.3)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
 ]
 
 [[package]]
@@ -10707,10 +10707,10 @@ dependencies = [
 [[package]]
 name = "storage_models"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
 ]
 
 [[package]]
@@ -10915,15 +10915,15 @@ dependencies = [
 [[package]]
 name = "system_hooks"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "arrayvec 0.7.6",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "paste",
  "ruint",
  "strum_macros",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
 ]
 
 [[package]]
@@ -12896,7 +12896,7 @@ dependencies = [
  "ruint",
  "serde",
  "strum_macros",
- "zksync_os_evm_errors",
+ "zksync_os_evm_errors 0.0.10",
 ]
 
 [[package]]
@@ -12913,7 +12913,7 @@ dependencies = [
  "ruint",
  "serde",
  "strum_macros",
- "zksync_os_evm_errors",
+ "zksync_os_evm_errors 0.0.10",
 ]
 
 [[package]]
@@ -12930,24 +12930,24 @@ dependencies = [
  "ruint",
  "serde",
  "strum_macros",
- "zksync_os_evm_errors",
+ "zksync_os_evm_errors 0.0.10",
 ]
 
 [[package]]
 name = "zk_ee"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "arrayvec 0.7.6",
  "bitflags 2.9.4",
  "cfg-if",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "paste",
  "ruint",
  "serde",
  "strum_macros",
- "zksync_os_evm_errors",
+ "zksync_os_evm_errors 0.0.12",
 ]
 
 [[package]]
@@ -13150,20 +13150,20 @@ dependencies = [
 [[package]]
 name = "zksync_os_api"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
  "alloy",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "callable_oracles 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "callable_oracles 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "risc_v_simulator 0.1.0 (git+https://github.com/matter-labs/zksync-airbender?tag=v0.4.3)",
  "ruint",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "zksync_os_interface",
- "zksync_os_runner 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "zksync_os_interface 0.0.12",
+ "zksync_os_runner 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
 ]
 
 [[package]]
@@ -13172,15 +13172,15 @@ version = "0.13.0-non-semver-compat"
 dependencies = [
  "alloy",
  "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "blake2 0.10.6",
  "ruint",
  "serde",
  "thiserror 2.0.17",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_contract_interface",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_merkle_tree",
  "zksync_os_mini_merkle_tree",
  "zksync_os_types",
@@ -13195,10 +13195,10 @@ dependencies = [
  "async-trait",
  "axum",
  "backon",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "bincode 2.0.1",
  "dashmap",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "futures",
  "hyper",
  "hyper-util",
@@ -13214,10 +13214,10 @@ dependencies = [
  "tower",
  "tracing",
  "vise",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_batch_types",
  "zksync_os_contract_interface",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_l1_sender",
  "zksync_os_merkle_tree",
  "zksync_os_observability",
@@ -13255,6 +13255,11 @@ name = "zksync_os_evm_errors"
 version = "0.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b3ad55a8aa3498e304565de55b61dc930bac227c8c5e81284b623c69f2143d2"
+
+[[package]]
+name = "zksync_os_evm_errors"
+version = "0.0.12"
+source = "git+https://github.com/matter-labs/zksync-os-interface?tag=v0.0.12#6acf36038c0516c505bf1cacf8f33275b3701647"
 
 [[package]]
 name = "zksync_os_fri_prover"
@@ -13314,14 +13319,14 @@ dependencies = [
  "alloy",
  "anyhow",
  "async-trait",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "blake2 0.10.6",
  "serde",
  "serde_json",
  "tokio",
  "zksync_os_api",
  "zksync_os_contract_interface",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_l1_watcher",
  "zksync_os_types",
 ]
@@ -13334,7 +13339,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "backon",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "fs2",
  "futures",
  "regex",
@@ -13366,7 +13371,18 @@ dependencies = [
  "alloy-consensus",
  "alloy-primitives",
  "serde",
- "zksync_os_evm_errors",
+ "zksync_os_evm_errors 0.0.10",
+]
+
+[[package]]
+name = "zksync_os_interface"
+version = "0.0.12"
+source = "git+https://github.com/matter-labs/zksync-os-interface?tag=v0.0.12#6acf36038c0516c505bf1cacf8f33275b3701647"
+dependencies = [
+ "alloy-consensus",
+ "alloy-primitives",
+ "serde",
+ "zksync_os_evm_errors 0.0.12",
 ]
 
 [[package]]
@@ -13388,7 +13404,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "blake2 0.10.6",
  "futures",
  "itertools 0.14.0",
@@ -13401,10 +13417,10 @@ dependencies = [
  "tracing",
  "vise",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_batch_types",
  "zksync_os_contract_interface",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_merkle_tree",
  "zksync_os_mini_merkle_tree",
  "zksync_os_observability",
@@ -13419,7 +13435,7 @@ dependencies = [
  "alloy",
  "anyhow",
  "async-trait",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "futures",
  "serde",
  "serde_json",
@@ -13466,12 +13482,12 @@ dependencies = [
  "anyhow",
  "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
  "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "blake2 0.10.6",
  "clap",
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "insta",
  "leb128",
  "once_cell",
@@ -13488,7 +13504,7 @@ dependencies = [
  "vise",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_crypto",
  "zksync_os_rocksdb",
 ]
@@ -13514,11 +13530,11 @@ dependencies = [
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.0.26-rc2)",
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "reqwest",
  "tracing",
  "url",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_types",
 ]
 
@@ -13632,9 +13648,9 @@ dependencies = [
  "alloy",
  "anyhow",
  "async-trait",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "blake2 0.10.6",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "futures",
  "reth-execution-types",
  "reth-primitives",
@@ -13649,10 +13665,10 @@ dependencies = [
  "tokio",
  "tracing",
  "vise",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync-os-revm",
  "zksync_os_genesis",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_internal_config",
  "zksync_os_mempool",
  "zksync_os_merkle_tree",
@@ -13683,11 +13699,11 @@ dependencies = [
  "alloy",
  "anyhow",
  "async-trait",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "boa_engine",
  "boa_gc",
  "dashmap",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "futures",
  "hyper",
  "jsonrpsee",
@@ -13701,11 +13717,11 @@ dependencies = [
  "tower-http",
  "tracing",
  "vise",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_api",
- "zksync_os_evm_errors",
+ "zksync_os_evm_errors 0.0.12",
  "zksync_os_genesis",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_mempool",
  "zksync_os_mini_merkle_tree",
  "zksync_os_multivm",
@@ -13762,9 +13778,9 @@ dependencies = [
 [[package]]
 name = "zksync_os_runner"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=v0.2.5#135013888f4ec0be3211dfd488050bbad8bd58c1"
+source = "git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi#dbfa7366b6c224e58b8652a165d1d9fbad68f271"
 dependencies = [
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "execution_utils 0.1.0 (git+https://github.com/matter-labs/zksync-airbender?tag=v0.4.3)",
  "prover_examples 0.1.0 (git+https://github.com/matter-labs/zksync-airbender?tag=v0.4.3)",
  "risc_v_simulator 0.1.0 (git+https://github.com/matter-labs/zksync-airbender?tag=v0.4.3)",
@@ -13777,8 +13793,8 @@ dependencies = [
  "alloy",
  "anyhow",
  "async-trait",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "futures",
  "num",
  "reth-execution-types",
@@ -13791,10 +13807,10 @@ dependencies = [
  "tokio",
  "tracing",
  "vise",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_gas_adjuster",
  "zksync_os_genesis",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_mempool",
  "zksync_os_multivm",
  "zksync_os_observability",
@@ -13812,7 +13828,7 @@ dependencies = [
  "async-trait",
  "axum",
  "base64 0.22.1",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "bincode 2.0.1",
  "blake2 0.10.6",
  "clap",
@@ -13820,7 +13836,7 @@ dependencies = [
  "execution_utils 0.1.0 (git+https://github.com/matter-labs/zksync-airbender.git?tag=v0.5.2)",
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "full_statement_verifier 0.1.0 (git+https://github.com/matter-labs/zksync-airbender.git?tag=v0.5.1)",
  "full_statement_verifier 0.1.0 (git+https://github.com/matter-labs/zksync-airbender.git?tag=v0.5.2)",
  "futures",
@@ -13845,13 +13861,13 @@ dependencies = [
  "vise",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.0-rc1)",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.4)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_batch_types",
  "zksync_os_batch_verification",
  "zksync_os_contract_interface",
  "zksync_os_gas_adjuster",
  "zksync_os_genesis",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_internal_config",
  "zksync_os_l1_sender",
  "zksync_os_l1_watcher",
@@ -13917,14 +13933,14 @@ dependencies = [
  "alloy",
  "anyhow",
  "dashmap",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "ruint",
  "tokio",
  "tracing",
  "vise",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_genesis",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_rocksdb",
  "zksync_os_storage_api",
 ]
@@ -13935,14 +13951,14 @@ version = "0.13.0-non-semver-compat"
 dependencies = [
  "alloy",
  "anyhow",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "ruint",
  "tempfile",
  "tracing",
  "vise",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_genesis",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_rocksdb",
  "zksync_os_storage_api",
 ]
@@ -13965,14 +13981,14 @@ dependencies = [
  "alloy",
  "bincode 2.0.1",
  "dashmap",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "futures",
  "semver 1.0.26",
  "tokio",
  "tracing",
  "vise",
  "zksync_os_genesis",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_rocksdb",
  "zksync_os_storage_api",
  "zksync_os_types",
@@ -13987,9 +14003,9 @@ dependencies = [
  "anyhow",
  "async-trait",
  "auto_impl",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "bincode 2.0.1",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "futures",
  "pin-project 1.1.10",
  "semver 1.0.26",
@@ -13998,9 +14014,9 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?branch=dz-make-code-size-limit-configurable-update-pi)",
  "zksync_os_api",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
  "zksync_os_observability",
  "zksync_os_rocksdb",
  "zksync_os_types",
@@ -14020,7 +14036,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.17",
  "zksync_os_contract_interface",
- "zksync_os_interface",
+ "zksync_os_interface 0.0.12",
 ]
 
 [[package]]

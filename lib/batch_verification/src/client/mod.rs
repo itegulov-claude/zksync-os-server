@@ -217,6 +217,8 @@ impl<Finality: ReadFinality> BatchVerificationClient<Finality> {
             self.diamond_proxy,
             request.batch_number,
             request.pubdata_mode,
+            // TODO: think about it
+            0x6000,
         )
         .commit_info;
 

@@ -69,8 +69,8 @@ regex = "1.11.3"
 #zk_os_basic_system = { package = "basic_system", path = "../zksync-os/basic_system" }
 #zk_os_api = { package = "zksync_os_api", path = "../zksync-os/api" }
 
-zksync_os_evm_errors = { version = "0.0.10" }
-zksync_os_interface = { version = "0.0.10" }
+zksync_os_evm_errors = { git = "https://github.com/matter-labs/zksync-os-interface", tag = "v0.0.12" }
+zksync_os_interface = { git = "https://github.com/matter-labs/zksync-os-interface", tag = "v0.0.12" }
 
 zk_os_forward_system_0_0_26 = { package = "forward_system", git = "https://github.com/matter-labs/zksync-os", tag = "v0.0.26-rc2", features = [
     "evm-compatibility",
@@ -96,14 +96,14 @@ zk_os_forward_system_0_2_4 = { package = "forward_system", git = "https://github
     "no_print",
 ], default-features = false }
 
-zk_os_forward_system = { package = "forward_system", git = "https://github.com/matter-labs/zksync-os", tag = "v0.2.5", features = [
+zk_os_forward_system = { package = "forward_system", git = "https://github.com/matter-labs/zksync-os", branch = "dz-make-code-size-limit-configurable-update-pi", features = [
     "production",
     "no_print",
 ], default-features = false }
-zk_ee = { package = "zk_ee", git = "https://github.com/matter-labs/zksync-os", tag = "v0.2.5" }
-zk_os_basic_system = { package = "basic_system", git = "https://github.com/matter-labs/zksync-os", tag = "v0.2.5" }
-zk_os_api = { package = "zksync_os_api", git = "https://github.com/matter-labs/zksync-os", tag = "v0.2.5" }
-zk_os_evm_interpreter = { package = "evm_interpreter", git = "https://github.com/matter-labs/zksync-os", tag = "v0.2.5" }
+zk_ee = { package = "zk_ee", git = "https://github.com/matter-labs/zksync-os", branch = "dz-make-code-size-limit-configurable-update-pi" }
+zk_os_basic_system = { package = "basic_system", git = "https://github.com/matter-labs/zksync-os", branch = "dz-make-code-size-limit-configurable-update-pi" }
+zk_os_api = { package = "zksync_os_api", git = "https://github.com/matter-labs/zksync-os", branch = "dz-make-code-size-limit-configurable-update-pi" }
+zk_os_evm_interpreter = { package = "evm_interpreter", git = "https://github.com/matter-labs/zksync-os", branch = "dz-make-code-size-limit-configurable-update-pi" }
 
 #execution_utils = { package = "execution_utils", path = "../zksync-airbender/execution_utils" }
 #full_statement_verifier = { package = "full_statement_verifier", path = "../zksync-airbender/full_statement_verifier" }

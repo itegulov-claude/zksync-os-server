@@ -345,6 +345,11 @@ pub struct SequencerConfig {
     #[config(default, with = Serde![*])]
     /// List of (block_number, db_key) pairs to override when downloading replay records.
     pub en_replay_record_overrides: Vec<(u64, Bytes)>,
+
+    #[config(default)]
+    /// Contracts code size limit, if not specified - default EVM EIP-170 value will be used(0x6000).
+    /// This value should be aligned with the value set on the settlement layer by admin, otherwise blocks/batches can't be committed.
+    pub code_size_limit: Option<u32>
 }
 
 impl SequencerConfig {

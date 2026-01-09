@@ -52,6 +52,7 @@ pub struct Batcher {
     pub pubdata_mode: PubdataMode,
     pub sidecar_sender: mpsc::Sender<BlobTransactionSidecar>,
     pub committed_batches: mpsc::Receiver<CommittedBatch>,
+    pub code_size_limit: Option<u32>,
 }
 
 #[async_trait]
@@ -312,6 +313,8 @@ impl Batcher {
             // we need to adapt pubdata mode depending on protocol version, to ensure automatic DA mode change during v30 upgrade
             self.pubdata_mode
                 .adapt_for_protocol_version(protocol_version),
+            // TODO: move to const
+            self.code_size_limit.unwrap_or(0x6000),
         )?;
         Ok(batch_envelope)
     }
@@ -381,6 +384,8 @@ impl Batcher {
             self.chain_address,
             // Assume pubdata mode does not change
             self.pubdata_mode,
+            // TODO:
+            self.code_size_limit.unwrap_or(0x6000),
         )?;
 
         // Verify that the rebuilt batch matches the stored batch by comparing hashes

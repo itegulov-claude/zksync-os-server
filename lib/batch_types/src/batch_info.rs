@@ -40,6 +40,7 @@ impl BatchInfo {
         chain_address: Address,
         batch_number: u64,
         pubdata_mode: PubdataMode,
+        code_size_limit: u32,
     ) -> Self {
         let mut priority_operations_hash = keccak256([]);
         let mut number_of_layer1_txs = 0;
@@ -140,6 +141,7 @@ impl BatchInfo {
             last_block_number: Some(last_block_output.header.number),
             chain_id,
             operator_da_input: da_fields.operator_da_input,
+            code_size_limit,
         };
         Self {
             commit_info,
@@ -184,6 +186,7 @@ impl BatchInfo {
                 let system_batch_output =
                     zk_os_basic_system::system_implementation::system::BatchOutput {
                         chain_id: U256::from(commit_info.chain_id),
+                        code_size_limit: commit_info.code_size_limit,
                         first_block_timestamp: commit_info.first_block_timestamp,
                         last_block_timestamp: commit_info.last_block_timestamp,
                         da_commitment_scheme: (commit_info.l2_da_commitment_scheme as u8)

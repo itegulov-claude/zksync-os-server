@@ -210,6 +210,7 @@ alloy::sol! {
             uint64 lastBlockTimestamp;
             uint64 lastBlockNumber;
             uint256 chainId;
+            uint32 codeSizeLimit;
             bytes operatorDAInput;
         }
 

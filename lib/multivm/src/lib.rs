@@ -39,32 +39,34 @@ pub fn run_block<
         .expect("Unsupported ZKsync OS execution version");
     match execution_version {
         ExecutionVersion::V1 | ExecutionVersion::V2 | ExecutionVersion::V3 => {
-            let object = RunBlockForwardV3 {};
-            object
-                .run_block(
-                    (),
-                    block_context,
-                    storage,
-                    preimage_source,
-                    AbiTxSource::new(tx_source),
-                    tx_result_callback,
-                    tracer,
-                )
-                .map_err(|err| anyhow::anyhow!(err))
+            todo!()
+            // let object = RunBlockForwardV3 {};
+            // object
+            //     .run_block(
+            //         (),
+            //         block_context,
+            //         storage,
+            //         preimage_source,
+            //         AbiTxSource::new(tx_source),
+            //         tx_result_callback,
+            //         tracer,
+            //     )
+            //     .map_err(|err| anyhow::anyhow!(err))
         }
         ExecutionVersion::V4 => {
-            let object = RunBlockForwardV4 {};
-            object
-                .run_block(
-                    (),
-                    block_context,
-                    storage,
-                    preimage_source,
-                    tx_source,
-                    tx_result_callback,
-                    tracer,
-                )
-                .map_err(|err| anyhow::anyhow!(err))
+            todo!()
+            // let object = RunBlockForwardV4 {};
+            // object
+            //     .run_block(
+            //         (),
+            //         block_context,
+            //         storage,
+            //         preimage_source,
+            //         tx_source,
+            //         tx_result_callback,
+            //         tracer,
+            //     )
+            //     .map_err(|err| anyhow::anyhow!(err))
         }
         ExecutionVersion::V5 => {
             let object = RunBlockForwardV5 {};
@@ -96,30 +98,32 @@ pub fn simulate_tx<Storage: ReadStorage, PreimgSrc: PreimageSource, Tracer: AnyT
         .expect("Unsupported ZKsync OS execution version");
     match execution_version {
         ExecutionVersion::V1 | ExecutionVersion::V2 | ExecutionVersion::V3 => {
-            let object = RunBlockForwardV3 {};
-            object
-                .simulate_tx(
-                    (),
-                    adapter::convert_tx_to_abi(transaction),
-                    block_context,
-                    storage,
-                    preimage_source,
-                    tracer,
-                )
-                .map_err(|err| anyhow::anyhow!(err))
+            todo!()
+            // let object = RunBlockForwardV3 {};
+            // object
+            //     .simulate_tx(
+            //         (),
+            //         adapter::convert_tx_to_abi(transaction),
+            //         block_context,
+            //         storage,
+            //         preimage_source,
+            //         tracer,
+            //     )
+            //     .map_err(|err| anyhow::anyhow!(err))
         }
         ExecutionVersion::V4 => {
-            let object = RunBlockForwardV4 {};
-            object
-                .simulate_tx(
-                    (),
-                    transaction,
-                    block_context,
-                    storage,
-                    preimage_source,
-                    tracer,
-                )
-                .map_err(|err| anyhow::anyhow!(err))
+            todo!()
+            // let object = RunBlockForwardV4 {};
+            // object
+            //     .simulate_tx(
+            //         (),
+            //         transaction,
+            //         block_context,
+            //         storage,
+            //         preimage_source,
+            //         tracer,
+            //     )
+            //     .map_err(|err| anyhow::anyhow!(err))
         }
         ExecutionVersion::V5 => {
             let object = RunBlockForwardV5 {};

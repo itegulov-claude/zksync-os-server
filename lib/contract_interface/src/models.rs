@@ -160,6 +160,7 @@ pub struct CommitBatchInfo {
     // Note, that pre-zksync-os-v30 batches did not contain this field.
     pub last_block_number: Option<u64>,
     pub chain_id: u64,
+    pub code_size_limit: u32,
     pub operator_da_input: Vec<u8>,
 }
 
@@ -187,6 +188,7 @@ impl From<CommitBatchInfo> for IExecutor::CommitBatchInfoZKsyncOS {
             // It is expected that for all the newly sent batches this field is always present.
             value.last_block_number.unwrap(),
             U256::from(value.chain_id),
+            value.code_size_limit,
             Bytes::from(value.operator_da_input),
         ))
     }
@@ -228,6 +230,7 @@ impl From<IExecutor::CommitBatchInfoZKsyncOS> for CommitBatchInfo {
             last_block_timestamp: value.lastBlockTimestamp,
             last_block_number: Some(value.lastBlockNumber),
             chain_id: value.chainId.to::<u64>(),
+            code_size_limit: value.codeSizeLimit,
             operator_da_input: value.operatorDAInput.as_ref().to_vec(),
         }
     }

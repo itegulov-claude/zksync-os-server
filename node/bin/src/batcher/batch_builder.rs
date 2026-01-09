@@ -23,6 +23,7 @@ pub(crate) fn seal_batch(
     chain_id: u64,
     chain_address: Address,
     pubdata_mode: PubdataMode,
+    code_size_limit: u32,
 ) -> anyhow::Result<BatchForSigning<ProverInput>> {
     let block_number_from = blocks.first().unwrap().1.block_context.block_number;
     let block_number_to = blocks.last().unwrap().1.block_context.block_number;
@@ -44,6 +45,7 @@ pub(crate) fn seal_batch(
         chain_address,
         batch_number,
         pubdata_mode,
+        code_size_limit,
     );
 
     use zk_os_forward_system::run::generate_batch_proof_input;

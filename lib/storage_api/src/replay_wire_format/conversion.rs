@@ -3,6 +3,7 @@ use super::v2::ReplayWireFormatV2;
 use super::v3::ReplayWireFormatV3;
 use super::v4::ReplayWireFormatV4;
 use super::v5::ReplayWireFormatV5;
+use super::v6::ReplayWireFormatV6;
 use crate::ReplayRecord;
 use alloy::eips::{Decodable2718, Encodable2718};
 use alloy::primitives::{Address, U256};
@@ -49,6 +50,8 @@ impl From<ReplayWireFormatV1> for ReplayRecord {
                 mix_hash,
                 execution_version: 1, // hardcoded for v1
                 blob_fee: U256::ZERO,
+                // TODO: should be optional?
+                code_size_limit: None,
             },
             starting_l1_priority_id,
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
@@ -102,6 +105,7 @@ impl From<ReplayWireFormatV2> for ReplayRecord {
                 mix_hash,
                 execution_version,
                 blob_fee: U256::ZERO,
+                code_size_limit: None,
             },
             starting_l1_priority_id,
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
@@ -153,6 +157,7 @@ impl From<ReplayWireFormatV3> for ReplayRecord {
                 mix_hash,
                 execution_version,
                 blob_fee: U256::ZERO,
+                code_size_limit: None,
             },
             starting_l1_priority_id,
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
@@ -161,6 +166,59 @@ impl From<ReplayWireFormatV3> for ReplayRecord {
             protocol_version: ProtocolSemanticVersion::legacy_genesis_version(), // We assume that old nodes won't have "newer" protocol versions.
             block_output_hash,
             force_preimages: vec![],
+        }
+    }
+}
+
+impl From<ReplayWireFormatV4> for ReplayRecord {
+    fn from(value: ReplayWireFormatV4) -> Self {
+        let ReplayWireFormatV4 {
+            block_context,
+            starting_l1_priority_id,
+            transactions,
+            previous_block_timestamp,
+            node_version,
+            block_output_hash,
+        } = value;
+        let super::v4::BlockContext {
+            chain_id,
+            block_number,
+            block_hashes,
+            timestamp,
+            eip1559_basefee,
+            pubdata_price,
+            native_price,
+            coinbase,
+            gas_limit,
+            pubdata_limit,
+            mix_hash,
+            execution_version,
+            blob_fee,
+        } = block_context;
+        Self {
+            block_context: BlockContext {
+                chain_id,
+                block_number,
+                block_hashes: BlockHashes(block_hashes.0),
+                timestamp,
+                eip1559_basefee,
+                pubdata_price,
+                native_price,
+                coinbase,
+                gas_limit,
+                pubdata_limit,
+                mix_hash,
+                execution_version,
+                blob_fee,
+                code_size_limit: None,
+            },
+            starting_l1_priority_id,
+            transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
+            previous_block_timestamp,
+            node_version,
+            protocol_version: ProtocolSemanticVersion::legacy_genesis_version(), // We assume that old nodes won't have "newer" protocol versions.
+            block_output_hash,
+            force_preimages: vec![], // v4 didn't have force_preimages
         }
     }
 }
@@ -207,6 +265,7 @@ impl From<ReplayWireFormatV5> for ReplayRecord {
                 mix_hash,
                 execution_version,
                 blob_fee,
+                code_size_limit: None,
             },
             starting_l1_priority_id,
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
@@ -219,17 +278,19 @@ impl From<ReplayWireFormatV5> for ReplayRecord {
     }
 }
 
-impl From<ReplayWireFormatV4> for ReplayRecord {
-    fn from(value: ReplayWireFormatV4) -> Self {
-        let ReplayWireFormatV4 {
+impl From<ReplayWireFormatV6> for ReplayRecord {
+    fn from(value: ReplayWireFormatV6) -> Self {
+        let ReplayWireFormatV6 {
             block_context,
             starting_l1_priority_id,
             transactions,
             previous_block_timestamp,
             node_version,
             block_output_hash,
+            protocol_version,
+            force_preimages,
         } = value;
-        let super::v4::BlockContext {
+        let super::v6::BlockContext {
             chain_id,
             block_number,
             block_hashes,
@@ -243,6 +304,7 @@ impl From<ReplayWireFormatV4> for ReplayRecord {
             mix_hash,
             execution_version,
             blob_fee,
+            code_size_limit
         } = block_context;
         Self {
             block_context: BlockContext {
@@ -259,19 +321,20 @@ impl From<ReplayWireFormatV4> for ReplayRecord {
                 mix_hash,
                 execution_version,
                 blob_fee,
+                code_size_limit: code_size_limit,
             },
             starting_l1_priority_id,
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
             previous_block_timestamp,
             node_version,
-            protocol_version: ProtocolSemanticVersion::legacy_genesis_version(), // We assume that old nodes won't have "newer" protocol versions.
+            protocol_version,
             block_output_hash,
-            force_preimages: vec![], // v4 didn't have force_preimages
+            force_preimages,
         }
     }
 }
 
-impl From<ReplayRecord> for ReplayWireFormatV5 {
+impl From<ReplayRecord> for ReplayWireFormatV6 {
     fn from(value: ReplayRecord) -> Self {
         let ReplayRecord {
             block_context,
@@ -297,12 +360,13 @@ impl From<ReplayRecord> for ReplayWireFormatV5 {
             mix_hash,
             execution_version,
             blob_fee,
+            code_size_limit,
         } = block_context;
         Self {
-            block_context: super::v5::BlockContext {
+            block_context: super::v6::BlockContext {
                 chain_id,
                 block_number,
-                block_hashes: super::v5::BlockHashes(block_hashes.0),
+                block_hashes: super::v6::BlockHashes(block_hashes.0),
                 timestamp,
                 eip1559_basefee,
                 pubdata_price,
@@ -313,6 +377,7 @@ impl From<ReplayRecord> for ReplayWireFormatV5 {
                 mix_hash,
                 execution_version,
                 blob_fee,
+                code_size_limit,
             },
             starting_l1_priority_id,
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
@@ -325,7 +390,7 @@ impl From<ReplayRecord> for ReplayWireFormatV5 {
     }
 }
 
-impl From<zksync_os_types::ZkTransaction> for super::v5::ZkTransactionWireFormat {
+impl From<zksync_os_types::ZkTransaction> for super::v6::ZkTransactionWireFormat {
     fn from(value: zksync_os_types::ZkTransaction) -> Self {
         Self(value.inner.encoded_2718())
     }
@@ -369,6 +434,15 @@ impl From<super::v4::ZkTransactionWireFormat> for zksync_os_types::ZkTransaction
 
 impl From<super::v5::ZkTransactionWireFormat> for zksync_os_types::ZkTransaction {
     fn from(value: super::v5::ZkTransactionWireFormat) -> Self {
+        ZkEnvelope::decode_2718(&mut &value.0[..])
+            .unwrap()
+            .try_into_recovered()
+            .unwrap()
+    }
+}
+
+impl From<super::v6::ZkTransactionWireFormat> for zksync_os_types::ZkTransaction {
+    fn from(value: super::v6::ZkTransactionWireFormat) -> Self {
         ZkEnvelope::decode_2718(&mut &value.0[..])
             .unwrap()
             .try_into_recovered()

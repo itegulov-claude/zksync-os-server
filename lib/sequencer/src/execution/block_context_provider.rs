@@ -55,6 +55,7 @@ pub struct BlockContextProvider<Mempool> {
     blob_fill_ratio_provider: watch::Receiver<Option<Ratio<u64>>>,
     last_constructed_block_ctx_sender: watch::Sender<Option<BlockContext>>,
     pubdata_mode: PubdataMode,
+    code_size_limit: Option<u32>,
 }
 
 impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
@@ -79,6 +80,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
         blob_fill_ratio_provider: watch::Receiver<Option<Ratio<u64>>>,
         last_constructed_block_ctx_sender: watch::Sender<Option<BlockContext>>,
         pubdata_mode: PubdataMode,
+        code_size_limit: Option<u32>,
     ) -> Self {
         Self {
             next_l1_priority_id,
@@ -101,6 +103,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
             blob_fill_ratio_provider,
             last_constructed_block_ctx_sender,
             pubdata_mode,
+            code_size_limit,
         }
     }
 
@@ -191,6 +194,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     mix_hash: Default::default(),
                     execution_version: execution_version as u32,
                     blob_fee: U256::ZERO,
+                    code_size_limit: self.code_size_limit,
                 };
                 self.last_constructed_block_ctx_sender
                     .send_replace(Some(block_context));
@@ -275,6 +279,8 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     // todo: initialize as source of randomness, i.e. the value of prevRandao
                     mix_hash: Default::default(),
                     execution_version,
+                    // TODO: think more about it, probably value from self should be used
+                    code_size_limit: rebuild.replay_record.block_context.code_size_limit,
                 };
                 let txs = if rebuild.make_empty {
                     Vec::new()
