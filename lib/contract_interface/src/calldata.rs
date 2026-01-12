@@ -3,7 +3,7 @@ use crate::models::{CommitBatchInfo, StoredBatchInfo};
 use alloy::primitives::Address;
 use alloy::sol_types::{SolCall, SolValue};
 
-const V30_ENCODING_VERSION: u8 = 3;
+const V30_ENCODING_VERSION: u8 = 4;
 
 pub struct CommitCalldata {
     pub chain_address: Address,

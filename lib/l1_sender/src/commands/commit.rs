@@ -95,7 +95,7 @@ impl CommitCommand {
             }
             // 31 needed for upgrade integration test
             30 | 31 => {
-                const V30_ENCODING_VERSION: u8 = 3;
+                const V30_ENCODING_VERSION: u8 = 4;
 
                 let commit_batch_info = IExecutor::CommitBatchInfoZKsyncOS::from(
                     self.input.batch.batch_info.commit_info.clone(),
