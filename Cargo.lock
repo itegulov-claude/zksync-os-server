@@ -14985,7 +14985,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_interop_watcher"
-version = "0.12.0-non-semver-compat"
+version = "0.13.0-non-semver-compat"
 dependencies = [
  "alloy",
  "anyhow",
