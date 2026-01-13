@@ -1,5 +1,7 @@
 mod stream;
-pub use stream::{BestTransactionsStream, ReplayTxStream, TxStream, best_transactions};
+pub use stream::{
+    BestTransactionsStream, PeekedTxType, ReplayTxStream, TxStream, best_transactions,
+};
 
 mod traits;
 pub use traits::L2TransactionPool;
@@ -41,6 +43,8 @@ pub fn in_memory<State: ReadStateHistory + Clone, Repository: ReadRepository + C
     // reth mempool metrics are propagated to `vise` collector. Only code inside the closure is
     // affected.
     ::metrics::with_local_recorder(&ViseRecorder, move || {
+        // Disable protocol base fee check to accept transactions with 0 gas price
+        let pool_config = pool_config.with_disabled_protocol_base_fee();
         RethPool::new(
             EthTransactionValidatorBuilder::new(client)
                 .no_prague()

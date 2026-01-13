@@ -104,7 +104,6 @@ pub struct PreparedBlockCommand<'a> {
     /// Not used in execution directly, but required to construct ReplayRecord
     pub starting_l1_priority_id: L1TxSerialId,
     pub metrics_label: &'static str,
-    pub node_version: semver::Version,
     pub protocol_version: ProtocolSemanticVersion,
     /// Expected hash of the block output (missing for command generated from `BlockCommand::Produce`)
     pub expected_block_output_hash: Option<B256>,
@@ -112,6 +111,7 @@ pub struct PreparedBlockCommand<'a> {
     /// Contract preimages to be included before the block execution.
     /// Can be non-empty e.g. when processing upgrade transactions.
     pub force_preimages: Vec<(B256, Vec<u8>)>,
+    pub is_interop_only_block: bool,
 }
 
 /// Behaviour when VM returns an InvalidTransaction error.

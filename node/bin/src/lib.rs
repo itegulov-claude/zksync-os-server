@@ -8,7 +8,6 @@ pub mod config;
 pub mod config_constants;
 mod en_remote_config;
 mod l1_provider;
-pub mod metadata;
 mod node_state_on_startup;
 mod priority_tree_steps;
 pub mod prover_api;
@@ -24,7 +23,6 @@ use crate::command_source::{ExternalNodeCommandSource, MainNodeCommandSource};
 use crate::config::{Config, ProverApiConfig, gas_adjuster_config};
 use crate::en_remote_config::load_remote_config;
 use crate::l1_provider::build_node_l1_provider;
-use crate::metadata::NODE_VERSION;
 use crate::node_state_on_startup::NodeStateOnStartup;
 use crate::priority_tree_steps::priority_tree_en_step::PriorityTreeENStep;
 use crate::priority_tree_steps::priority_tree_pipeline_step::PriorityTreePipelineStep;
@@ -52,7 +50,7 @@ use jsonrpsee::http_client::HttpClient;
 use ruint::aliases::U256;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
 use zksync_os_batch_verification::{BatchVerificationClient, BatchVerificationPipelineStep};
@@ -63,6 +61,7 @@ use zksync_os_gas_adjuster::GasAdjuster;
 use zksync_os_genesis::{FileGenesisInputSource, Genesis, GenesisInputSource};
 use zksync_os_interface::types::BlockHashes;
 use zksync_os_internal_config::InternalConfigManager;
+use zksync_os_interop_watcher::L1InteropRootsWatcher;
 use zksync_os_l1_sender::commands::commit::CommitCommand;
 use zksync_os_l1_sender::commands::prove::ProofCommand;
 use zksync_os_l1_sender::pipeline_component::L1Sender;
@@ -73,6 +72,7 @@ use zksync_os_l1_watcher::{
 };
 use zksync_os_mempool::L2TransactionPool;
 use zksync_os_merkle_tree::{MerkleTree, RocksDBWrapper};
+use zksync_os_metadata::NODE_VERSION;
 use zksync_os_object_store::ObjectStoreFactory;
 use zksync_os_observability::GENERAL_METRICS;
 use zksync_os_pipeline::Pipeline;
@@ -102,7 +102,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     stop_receiver: watch::Receiver<bool>,
     config: Config,
 ) {
-    let node_version: semver::Version = NODE_VERSION.parse().unwrap();
     let role: &'static str = if config.sequencer_config.is_main_node() {
         "main_node"
     } else {
@@ -124,7 +123,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     if !config.l1_sender_config.enabled {
         unimplemented!("running without L1 Senders is temporarily not supported");
     }
-    tracing::info!(version = %node_version, role, "Initializing Node");
+    tracing::info!(version = NODE_VERSION, role, "Initializing Node");
 
     let (bridgehub_address, bytecode_supplier_address, chain_id, genesis_input_source) =
         if config.sequencer_config.is_main_node() {
@@ -168,6 +167,11 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
 
     // Channel between L1TxWatcher and Sequencer
     let (l1_transactions_sender, l1_transactions_for_sequencer) = tokio::sync::mpsc::channel(5);
+
+    // Channel between InteropRootsWatcher and Sequencer
+    // todo: implement InteropRootsWatcher
+    let (interop_transactions_sender, interop_transactions_receiver) =
+        tokio::sync::mpsc::channel(5);
 
     // Channel between L1UpgradeWatcher and Sequencer
     let (l1_upgrade_transactions_sender, l1_upgrade_transactions_receiver) =
@@ -224,7 +228,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             .rocks_db_path
             .join(BLOCK_REPLAY_WAL_DB_NAME),
         &genesis,
-        node_version.clone(),
     )
     .await;
 
@@ -518,13 +521,13 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         next_l1_priority_id,
         l1_transactions_for_sequencer,
         l1_upgrade_transactions_receiver,
+        interop_transactions_receiver,
         l2_mempool,
         block_hashes_for_next_block,
         previous_block_timestamp,
         chain_id,
         config.sequencer_config.block_gas_limit,
         config.sequencer_config.block_pubdata_limit_bytes,
-        node_version,
         current_protocol_version.clone(),
         config.sequencer_config.fee_collector_address,
         config.sequencer_config.base_fee_override,
@@ -550,6 +553,20 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         .expect("failed to start L1 upgrade transaction watcher")
         .run()
         .map(report_exit("L1 upgrade transaction watcher")),
+    );
+
+    // ========== Start InteropRootsWatcher ===========
+    tasks.spawn(
+        // todo: pass the real values here
+        L1InteropRootsWatcher::new(
+            node_startup_state.l1_state.bridgehub.clone(),
+            Duration::from_secs(5),
+            interop_transactions_sender,
+        )
+        .await
+        .expect("failed to start interop roots watcher")
+        .run()
+        .map(report_exit("Interop roots watcher")),
     );
 
     // ========== Start Sequencer ===========
