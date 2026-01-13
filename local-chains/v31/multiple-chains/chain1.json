@@ -3,15 +3,15 @@
     "sandbox": true
   },
   "genesis": {
-    "bridgehub_address": "0x2dc055db066dba7ad307bf6973c002da0b3697e7",
-    "bytecode_supplier_address": "0x30844848ea6dee81a32707e03f79ed0ccd1ad51f",
+    "bridgehub_address": "0x78b8b2dbaf2cb50b69a4a0ceee217b926c8520d2",
+    "bytecode_supplier_address": "0x76ce7b125966cfc367fb3cb529e8a1bad3ecd88e",
     "genesis_input_path": "./local-chains/v31/genesis.json",
     "chain_id": 6565
   },
   "l1_sender": {
-    "operator_commit_pk": "0x3a8e4bd8ad505ca90ccaeaab184768f5345b275a7b5e77494c8a20c3eb935de4",
-    "operator_prove_pk": "0xb5e041eb8934b17c50667d4cadbf76b36bcacac3e692246de0c84c785b29474e",
-    "operator_execute_pk": "0x935228c98f7275de8dd32db268f67ae603a09be186ca36513433ca950e211ab1"
+    "operator_commit_pk": "0x56eae06eb0495373227ba951d95efdecaf90111bf3c0ec74cc32f308d42281a7",
+    "operator_prove_pk": "0xd8a36ab540e9f96b32239f6c1da5a57a56cd44f81c04fc5c7be95e429fccc26a",
+    "operator_execute_pk": "0x70acbb39ccaf42d68d072bc1796d1ec096cb3e8470251128da7533dad3c22abd"
   },
   "rpc": {
     "address": "0.0.0.0:3050"
