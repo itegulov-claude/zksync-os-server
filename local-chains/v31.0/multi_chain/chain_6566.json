@@ -15,5 +15,8 @@
     },
     "rpc": {
         "address": "0.0.0.0:3051"
+    },
+    "mempool": {
+        "minimal_protocol_basefee": 0
     }
 }
