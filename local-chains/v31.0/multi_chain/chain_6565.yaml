@@ -9,9 +9,6 @@ l1_sender:
   operator_commit_sk: '0xb453e0b2b57e47f17ac43ce95dc21e5a60658f1fadeaa3c80357025862ef4e4b'
   operator_prove_sk: '0xd1e462540369842600b9ce0217cd491b183fc0f2e4542017ef2b2b6d9fdf72aa'
   operator_execute_sk: '0x00d13261813c9d72980d5c1195e05c4590fee769ac8f54e798b799ccba6b71cf'
-  operator_commit_pk: '0x933196a52a11472adfe4996bef6d4bd65d2a5a52e6bbe85cd8e46eea9497534d'
-  operator_prove_pk: '0x8a33eb6aa4a94c7ad022f63abe5660a67b5579e518e1eb0f4b0561bf1508eed7'
-  operator_execute_pk: '0xcecf04669d0a5c2135d0beca71bbd5d4cc30ff5938d127e8ad80e3e64b9945d6'
 rpc:
   address: 0.0.0.0:3050
 external_price_api_client:

@@ -7,9 +7,6 @@ l1_sender:
   operator_commit_sk: '0x8c888ba48dfd17e09ba69df9c0dbd13b3eff6d087253a30c721f275382eb49e5'
   operator_prove_sk: '0x30778054b5b3ceb78f298a07f4d44d82049d766777ceb6ea11bd7a2db6a41818'
   operator_execute_sk: '0x305256ad82fe5affbbb052dfc53911bbaccad448538f58f51cbe365fb5940195'
-  operator_commit_pk: '0x499c4c50c9c176d1f3211bb4cc2a680a032ab956c64d8fdbf4805269f1b42575'
-  operator_prove_pk: '0x75c885f1d717abb6e0b78e389933246353ba9c65e4a7afa8f2775dc9ee267256'
-  operator_execute_pk: '0xe1fea4316ae1411bab3eba3d6b153f1f6330c946c5568ef88175ba9c25dacd9e'
 external_price_api_client:
   source: Forced
   forced_prices:

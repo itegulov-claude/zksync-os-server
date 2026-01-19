@@ -8,6 +8,9 @@ Configuration for running multiple ZKsync OS chains against a shared L1.
 |-------------------|----------|----------|
 | `chain_6565.yaml` | 6565     | 3050     |
 | `chain_6566.yaml` | 6566     | 3051     |
+| `chain_506.yaml`  | 506      | 3052     |
+
+The chain `506` is the whitelisted ZK Gateway chain.
 
 ## Quick Start
 
@@ -20,6 +23,9 @@ cargo run --release -- --config ./local-chains/v31.0/multi_chain/chain_6565.yaml
 
 # Terminal 3: Chain 2
 cargo run --release -- --config ./local-chains/v31.0/multi_chain/chain_6566.yaml
+
+# Terminal 4: Chain 506
+cargo run --release -- --config ./local-chains/v31.0/multi_chain/chain_506.yaml
 ```
 
 ## Wallets
@@ -27,6 +33,7 @@ cargo run --release -- --config ./local-chains/v31.0/multi_chain/chain_6566.yaml
 For complete list of keys and wallet addresses, check:
 * [wallets_6565.yaml](./wallets_6565.yaml)
 * [wallets_6566.yaml](./wallets_6566.yaml)
+* [wallets_506.yaml](./wallets_506.yaml)
   for the corresponding chain.
 
 ## Contract Addresses
@@ -34,6 +41,7 @@ For complete list of keys and wallet addresses, check:
 For contract addresses, please refer to `genesis` section of:
 * [chain_6565.yaml](./chain_6565.yaml)
 * [chain_6566.yaml](./chain_6566.yaml)
+* [chain_506.yaml](./chain_506.yaml)
   for the corresponding chain.
 
 ## Versions

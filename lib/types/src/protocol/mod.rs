@@ -85,6 +85,10 @@ impl ProtocolSemanticVersion {
         let patch = U256::from(self.patch);
         Ok(minor | patch)
     }
+
+    pub fn interop_version() -> Self {
+        Self::new(0, 31, 0)
+    }
 }
 
 #[derive(thiserror::Error, Debug, Clone, Copy)]
