@@ -10,7 +10,7 @@ use alloy::primitives::{Address, B256, U256};
 use zksync_os_types::{InteropRootsLogIndex, ProtocolSemanticVersion};
 
 // Differences from v5:
-// - added `interop_root_log_start_index` to `ReplayWireFormatV6`
+// - added `interop_root_indexes` to `ReplayWireFormatV6`
 
 /// The format ReplayRecords are currently sent in
 #[derive(Encode, Decode)]
@@ -20,6 +20,8 @@ pub struct ReplayWireFormatV6 {
     pub transactions: Vec<ZkTransactionWireFormat>,
     #[bincode(with_serde)]
     pub interop_root_log_start_index: InteropRootsLogIndex,
+    #[bincode(with_serde)]
+    pub interop_root_indexes: Vec<(B256, InteropRootsLogIndex)>,
     pub previous_block_timestamp: u64,
     #[bincode(with_serde)]
     pub node_version: semver::Version,

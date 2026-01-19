@@ -41,6 +41,7 @@ fn dummy_record(block_number: BlockNumber) -> ReplayRecord {
         42,
         InteropRootsLogIndex::default(),
         vec![],
+        vec![],
         24,
         // Important that this is set to `NODE_SEMVER_VERSION` as v1 does not transport node version
         // over the network. Instead, receiver stamps all records with its current node version.

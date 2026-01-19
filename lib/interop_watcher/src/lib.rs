@@ -39,9 +39,11 @@ impl L1InteropRootsWatcher {
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get message root: {}", e))?;
 
-        tracing::info!(
+        tracing::error!(
             contract_address = %contract_address,
-            "L1InteropRootsWatcher initialized"
+            "L1InteropRootsWatcher initialized, scanning from block number: {}, log index: {}",
+            next_log_to_scan_from.block_number,
+            next_log_to_scan_from.log_index
         );
 
         Ok(Self {

@@ -43,6 +43,7 @@ impl TryFrom<v0::ReplayRecord> for StorageReplayRecord {
             block_context,
             starting_l1_priority_id: 0,
             interop_root_log_start_index: InteropRootsLogIndex::default(),
+            interop_root_indexes: vec![],
             transactions: vec![],
             previous_block_timestamp: 0,
             node_version: semver::Version::new(0, 0, 0),
@@ -136,6 +137,7 @@ impl TryFrom<v1::ReplayRecord> for StorageReplayRecord {
             block_context: value.block_context.into(),
             starting_l1_priority_id: value.starting_l1_priority_id,
             interop_root_log_start_index: InteropRootsLogIndex::default(),
+            interop_root_indexes: vec![],
             transactions: value
                 .transactions
                 .into_iter()
@@ -191,6 +193,11 @@ impl From<StorageReplayRecord> for v2::ReplayRecord {
             block_context: value.block_context.into(),
             starting_l1_priority_id: value.starting_l1_priority_id,
             interop_root_log_start_index: value.interop_root_log_start_index,
+            interop_root_indexes: value
+                .interop_root_indexes
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             transactions: value
                 .transactions
                 .into_iter()
@@ -239,6 +246,7 @@ impl TryFrom<v2::ReplayRecord> for StorageReplayRecord {
             block_context: value.block_context.into(),
             starting_l1_priority_id: value.starting_l1_priority_id,
             interop_root_log_start_index: InteropRootsLogIndex::default(),
+            interop_root_indexes: vec![],
             transactions: value
                 .transactions
                 .into_iter()

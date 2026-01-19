@@ -104,6 +104,7 @@ pub struct PreparedBlockCommand<'a> {
     /// Not used in execution directly, but required to construct ReplayRecord
     pub starting_l1_priority_id: L1TxSerialId,
     pub interop_root_log_start_index: InteropRootsLogIndex,
+    pub interop_root_log_indexes: Option<Vec<(B256, InteropRootsLogIndex)>>,
     pub metrics_label: &'static str,
     pub protocol_version: ProtocolSemanticVersion,
     /// Expected hash of the block output (missing for command generated from `BlockCommand::Produce`)

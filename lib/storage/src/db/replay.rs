@@ -39,6 +39,7 @@ pub enum BlockReplayColumnFamily {
     Context,
     StartingL1SerialId,
     InteropRootLogStartIndex,
+    InteropRootIndexes,
     Txs,
     NodeVersion,
     ProtocolVersion,
@@ -54,6 +55,7 @@ impl NamedColumnFamily for BlockReplayColumnFamily {
         BlockReplayColumnFamily::Context,
         BlockReplayColumnFamily::StartingL1SerialId,
         BlockReplayColumnFamily::InteropRootLogStartIndex,
+        BlockReplayColumnFamily::InteropRootIndexes,
         BlockReplayColumnFamily::Txs,
         BlockReplayColumnFamily::NodeVersion,
         BlockReplayColumnFamily::ProtocolVersion,
@@ -67,6 +69,7 @@ impl NamedColumnFamily for BlockReplayColumnFamily {
             BlockReplayColumnFamily::Context => "context",
             BlockReplayColumnFamily::StartingL1SerialId => "last_processed_l1_tx_id",
             BlockReplayColumnFamily::InteropRootLogStartIndex => "interop_root_log_start_index",
+            BlockReplayColumnFamily::InteropRootIndexes => "interop_root_indexes",
             BlockReplayColumnFamily::Txs => "txs",
             BlockReplayColumnFamily::NodeVersion => "node_version",
             BlockReplayColumnFamily::ProtocolVersion => "protocol_version",
@@ -98,6 +101,7 @@ impl BlockReplayStorage {
                     block_context: *genesis_context,
                     starting_l1_priority_id: 0,
                     interop_root_log_start_index: InteropRootsLogIndex::default(),
+                    interop_root_indexes: vec![],
                     transactions: vec![],
                     previous_block_timestamp: 0,
                     node_version: NODE_SEMVER_VERSION.clone(),
@@ -152,6 +156,17 @@ impl BlockReplayStorage {
             BlockReplayColumnFamily::InteropRootLogStartIndex,
             &db_key,
             &interop_root_log_start_index_value,
+        );
+        let interop_root_indexes_value = bincode::serde::encode_to_vec(
+            &record.interop_root_indexes,
+            bincode::config::standard(),
+        )
+        .expect("Failed to serialize record.interop_root_indexes");
+
+        batch.put_cf(
+            BlockReplayColumnFamily::InteropRootIndexes,
+            &db_key,
+            &interop_root_indexes_value,
         );
         batch.put_cf(BlockReplayColumnFamily::Txs, &db_key, &txs_value);
         batch.put_cf(
@@ -289,6 +304,12 @@ impl ReadReplay for BlockReplayStorage {
             ProtocolSemanticVersion::legacy_genesis_version()
         };
 
+        let interop_root_indexes = self
+            .db
+            .get_cf(BlockReplayColumnFamily::InteropRootIndexes, &key)
+            .expect("Failed to read from InteropRootIndexes CF")
+            .expect("InteropRootIndexes must be written atomically with Context");
+
         let interop_root_log_start_index = self
             .db
             .get_cf(BlockReplayColumnFamily::InteropRootLogStartIndex, &key)
@@ -334,6 +355,12 @@ impl ReadReplay for BlockReplayStorage {
                 bincode::config::standard(),
             )
             .expect("Failed to deserialize interop root log start index")
+            .0,
+            interop_root_indexes: bincode::serde::decode_from_slice(
+                &interop_root_indexes,
+                bincode::config::standard(),
+            )
+            .expect("Failed to deserialize interop root indexes")
             .0,
             transactions: bincode::decode_from_slice(&transactions, bincode::config::standard())
                 .expect("Failed to deserialize transactions")

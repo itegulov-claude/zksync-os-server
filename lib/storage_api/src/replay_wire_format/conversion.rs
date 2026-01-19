@@ -54,6 +54,7 @@ impl From<ReplayWireFormatV1> for ReplayRecord {
             starting_l1_priority_id,
             // todo: doesn't look right
             interop_root_log_start_index: InteropRootsLogIndex::default(),
+            interop_root_indexes: vec![],
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
             previous_block_timestamp,
             node_version,
@@ -109,6 +110,7 @@ impl From<ReplayWireFormatV2> for ReplayRecord {
             starting_l1_priority_id,
             // todo: doesn't look right
             interop_root_log_start_index: InteropRootsLogIndex::default(),
+            interop_root_indexes: vec![],
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
             previous_block_timestamp,
             node_version,
@@ -162,6 +164,7 @@ impl From<ReplayWireFormatV3> for ReplayRecord {
             starting_l1_priority_id,
             // todo: doesn't look right
             interop_root_log_start_index: InteropRootsLogIndex::default(),
+            interop_root_indexes: vec![],
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
             previous_block_timestamp,
             node_version,
@@ -218,6 +221,7 @@ impl From<ReplayWireFormatV5> for ReplayRecord {
             starting_l1_priority_id,
             // todo: doesn't look right
             interop_root_log_start_index: InteropRootsLogIndex::default(),
+            interop_root_indexes: vec![],
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
             previous_block_timestamp,
             node_version,
@@ -272,6 +276,7 @@ impl From<ReplayWireFormatV4> for ReplayRecord {
             starting_l1_priority_id,
             // todo: doesn't look right
             interop_root_log_start_index: InteropRootsLogIndex::default(),
+            interop_root_indexes: vec![],
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
             previous_block_timestamp,
             node_version,
@@ -288,6 +293,7 @@ impl From<ReplayRecord> for ReplayWireFormatV6 {
             block_context,
             starting_l1_priority_id,
             interop_root_log_start_index,
+            interop_root_indexes,
             transactions,
             previous_block_timestamp,
             node_version,
@@ -328,6 +334,7 @@ impl From<ReplayRecord> for ReplayWireFormatV6 {
             },
             starting_l1_priority_id,
             interop_root_log_start_index,
+            interop_root_indexes,
             transactions: transactions.into_iter().map(|tx| tx.into()).collect(),
             previous_block_timestamp,
             node_version,

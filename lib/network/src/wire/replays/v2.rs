@@ -4,7 +4,7 @@
 //! Do not change this file under any circumstances. Copy it instead. May be deleted when obsolete.
 //! todo: enforce in CI
 
-use crate::wire::{BlockHashes, ForcedPreimage};
+use crate::wire::{BlockHashes, ForcedPreimage, primitives::InteropRootsMetadata};
 use alloy::primitives::{Address, B256, U256};
 use alloy_rlp::{RlpDecodable, RlpEncodable};
 use zksync_os_types::{InteropRootsLogIndex, L1TxSerialId, ProtocolSemanticVersion, ZkEnvelope};
@@ -14,6 +14,7 @@ pub struct ReplayRecord {
     pub block_context: BlockContext,
     pub starting_l1_priority_id: L1TxSerialId,
     pub interop_root_log_start_index: InteropRootsLogIndex,
+    pub interop_root_indexes: Vec<InteropRootsMetadata>,
     pub transactions: Vec<ZkEnvelope>,
     pub previous_block_timestamp: u64,
     pub protocol_version: ProtocolSemanticVersion,

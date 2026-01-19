@@ -70,11 +70,11 @@ impl Logs {
             "".to_string()
         } else {
             "INFO,\
-            zksync_os_server=DEBUG,\
-            zksync_os_sequencer=DEBUG,\
-            zksync_os_priority_tree=DEBUG,\
-            zksync_os_merkle_tree=DEBUG,\
-            zksync_os_revm_consistency_checker=DEBUG,\
+            zksync_os_server=INFO,\
+            zksync_os_sequencer=INFO,\
+            zksync_os_priority_tree=INFO,\
+            zksync_os_merkle_tree=INFO,\
+            zksync_os_revm_consistency_checker=INFO,\
             "
             .to_string()
         };

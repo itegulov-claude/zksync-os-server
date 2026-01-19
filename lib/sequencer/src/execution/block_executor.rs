@@ -4,7 +4,7 @@ use crate::execution::vm_wrapper::VmWrapper;
 use crate::model::blocks::{InvalidTxPolicy, PreparedBlockCommand, SealPolicy};
 use crate::model::debug_formatting::BlockOutputDebug;
 use alloy::consensus::Transaction;
-use alloy::primitives::TxHash;
+use alloy::primitives::{B256, TxHash};
 use futures::StreamExt;
 use std::pin::Pin;
 use tokio::time::Sleep;
@@ -16,7 +16,7 @@ use zksync_os_observability::ComponentStateHandle;
 use zksync_os_storage_api::{
     MeteredViewState, OverriddenStateView, ReadStateHistory, ReplayRecord, WriteState,
 };
-use zksync_os_types::{ZkEnvelope, ZkTransaction, ZkTxType, ZksyncOsEncode};
+use zksync_os_types::{InteropRootsLogIndex, ZkEnvelope, ZkTransaction, ZkTxType, ZksyncOsEncode};
 // Note that this is a pure function without a container struct (e.g. `struct BlockExecutor`)
 // MAINTAIN this to ensure the function is completely stateless - explicit or implicit.
 
@@ -53,6 +53,7 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
     let mut runner = VmWrapper::new(ctx, metered_state_view);
 
     let mut executed_txs = Vec::<ZkTransaction>::new();
+    let mut interop_root_log_indexes = Vec::<(B256, InteropRootsLogIndex)>::new();
     let mut cumulative_gas_used = 0u64;
     let mut purged_txs = Vec::new();
 
@@ -65,6 +66,8 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
     };
     let mut deadline: Option<Pin<Box<Sleep>>> = None; // will arm after 1st tx success
     let mut interop_roots_count = 0;
+
+    // todo: a sanity check around command and interop_root_log_indexes
 
     /* ---------- main loop ------------------------------------------ */
     // seal_reason must only be used for observability - handling must remain generic
@@ -101,38 +104,6 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
                             signer=?tx.inner.signer(),
                             "Executing transaction..."
                         );
-
-                        if command.is_interop_only_block {
-                            match tx.tx_type() {
-                                ZkTxType::InteropRoots => {
-                                    let current_interop_roots_count = match tx.inner.inner() {
-                                        ZkEnvelope::InteropRoots(interop_roots_tx) => {
-                                            interop_roots_tx.interop_roots_count()
-                                        }
-                                        _ => 0,
-                                    };
-
-                                    if interop_roots_count + current_interop_roots_count > INTEROP_ROOTS_PER_BLOCK {
-                                        if matches!(command.seal_policy, SealPolicy::UntilExhausted { allowed_to_finish_early: false }) {
-                                            // We trust that the execution stream will not break protocol invariants.
-                                            tracing::info!(block = ctx.block_number, "interop block contains too many interop roots, but seal policy requires full exhaustion");
-                                        }
-
-                                        break SealReason::LimitedInteropOnlyBlock;
-                                    }
-
-                                    interop_roots_count += current_interop_roots_count;
-                                }
-                                _ => {
-                                    if matches!(command.seal_policy, SealPolicy::UntilExhausted { allowed_to_finish_early: false }) {
-                                        // We trust that the execution stream will not break protocol invariants.
-                                        tracing::info!(block = ctx.block_number, "interop-only block contains non-interop transaction, but seal policy requires full exhaustion");
-                                    }
-
-                                    break SealReason::LimitedInteropOnlyBlock;
-                                }
-                            }
-                        }
 
                         match (command.is_interop_only_block, tx.tx_type(), command.seal_policy) {
                             (false, _, _) => {
@@ -186,6 +157,13 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
                                     "Transaction executed"
                                 );
 
+                                match tx.envelope() {
+                                    ZkEnvelope::InteropRoots(interop_roots_tx) => {
+                                        interop_root_log_indexes.push((*tx.hash(), interop_roots_tx.event_log_index()));
+                                    }
+                                    _ => {}
+                                }
+
                                 let tx_type = tx.tx_type();
                                 executed_txs.push(tx);
                                 cumulative_gas_used += res.gas_used;
@@ -206,6 +184,8 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
                                         }
                                     }
                                 }
+
+
                                 match command.seal_policy {
                                     SealPolicy::Decide(_, limit) if executed_txs.len() >= limit => {
                                     tracing::debug!(block = ctx.block_number,
@@ -399,6 +379,10 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
             ctx,
             command.starting_l1_priority_id,
             command.interop_root_log_start_index,
+            // if command is produce, interop root log indexes are constructed during the execution, otherwise we should use the ones from the command
+            command
+                .interop_root_log_indexes
+                .unwrap_or(interop_root_log_indexes),
             executed_txs,
             command.previous_block_timestamp,
             NODE_SEMVER_VERSION.clone(),

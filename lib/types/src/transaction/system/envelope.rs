@@ -96,7 +96,10 @@ impl<T: SystemTxType> Decodable2718 for SystemTransactionEnvelope<T> {
         Ok(Self {
             hash,
             // doesn't look right
-            event_log_index: InteropRootsLogIndex::default(),
+            event_log_index: InteropRootsLogIndex {
+                block_number: 0,
+                log_index: 0,
+            },
             inner: transaction,
         })
     }

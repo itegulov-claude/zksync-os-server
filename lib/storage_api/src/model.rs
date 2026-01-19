@@ -37,7 +37,10 @@ pub struct ReplayRecord {
     pub starting_l1_priority_id: L1TxSerialId,
     /// Log index from which to start scanning for interop roots
     /// This is the log index of the first interop root in the block
+    /// Should be stored in record even if indexes mapping is empty to be able to restore the state of watcher
     pub interop_root_log_start_index: InteropRootsLogIndex,
+    /// Mapping of interop root transaction hashes to their log indexes
+    pub interop_root_indexes: Vec<(B256, InteropRootsLogIndex)>,
     pub transactions: Vec<ZkTransaction>,
     /// The field is used to generate the prover input for the block in ProverInputGenerator.
     /// Will be moved to the BlockContext at some point
@@ -58,6 +61,7 @@ impl ReplayRecord {
         block_context: BlockContext,
         starting_l1_priority_id: L1TxSerialId,
         interop_root_log_start_index: InteropRootsLogIndex,
+        interop_root_indexes: Vec<(B256, InteropRootsLogIndex)>,
         transactions: Vec<ZkTransaction>,
         previous_block_timestamp: u64,
         node_version: semver::Version,
@@ -78,27 +82,33 @@ impl ReplayRecord {
             );
         }
 
-        let first_interop_root_log_index = match transactions.first() {
-            Some(tx) => match tx.envelope() {
-                ZkEnvelope::InteropRoots(tx) => Some(tx.event_log_index()),
+        let interop_root_transactions = transactions
+            .iter()
+            .filter_map(|tx| match tx.envelope() {
+                ZkEnvelope::InteropRoots(tx) => Some(tx),
                 _ => None,
-            },
-            None => None,
-        };
+            })
+            .collect::<Vec<_>>();
 
-        if let Some(first_interop_root_log_index) = first_interop_root_log_index {
-            assert!(
-                first_interop_root_log_index >= interop_root_log_start_index,
-                "First interop root log index must be greater than or equal to interop_root_log_start_index, first_interop_root_log_index: {:?}, interop_root_log_start_index: {:?}",
-                first_interop_root_log_index,
-                interop_root_log_start_index
+        for i in 0..interop_root_transactions.len() {
+            assert_eq!(
+                interop_root_transactions[i].hash(),
+                &interop_root_indexes[i].0,
+                "Stored interop root transaction hash must match the corresponding interop root hash in transactions"
             );
+            if i > 0 {
+                assert!(
+                    interop_root_indexes[i].1 > interop_root_indexes[i - 1].1,
+                    "Stored interop root log index must be greater than the previous one"
+                );
+            }
         }
 
         Self {
             block_context,
             starting_l1_priority_id,
             interop_root_log_start_index,
+            interop_root_indexes,
             transactions,
             previous_block_timestamp,
             node_version,
