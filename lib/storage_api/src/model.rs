@@ -38,9 +38,7 @@ pub struct ReplayRecord {
     /// Log index from which to start scanning for interop roots
     /// This is the log index of the first interop root in the block
     /// Should be stored in record even if indexes mapping is empty to be able to restore the state of watcher
-    pub interop_root_log_start_index: InteropRootsLogIndex,
-    /// Mapping of interop root transaction hashes to their log indexes
-    pub interop_root_indexes: Vec<(B256, InteropRootsLogIndex)>,
+    pub last_interop_event_index: InteropRootsLogIndex,
     pub transactions: Vec<ZkTransaction>,
     /// The field is used to generate the prover input for the block in ProverInputGenerator.
     /// Will be moved to the BlockContext at some point
@@ -60,8 +58,7 @@ impl ReplayRecord {
     pub fn new(
         block_context: BlockContext,
         starting_l1_priority_id: L1TxSerialId,
-        interop_root_log_start_index: InteropRootsLogIndex,
-        interop_root_indexes: Vec<(B256, InteropRootsLogIndex)>,
+        last_interop_event_index: InteropRootsLogIndex,
         transactions: Vec<ZkTransaction>,
         previous_block_timestamp: u64,
         node_version: semver::Version,
@@ -82,33 +79,10 @@ impl ReplayRecord {
             );
         }
 
-        let interop_root_transactions = transactions
-            .iter()
-            .filter_map(|tx| match tx.envelope() {
-                ZkEnvelope::InteropRoots(tx) => Some(tx),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-
-        for i in 0..interop_root_transactions.len() {
-            assert_eq!(
-                interop_root_transactions[i].hash(),
-                &interop_root_indexes[i].0,
-                "Stored interop root transaction hash must match the corresponding interop root hash in transactions"
-            );
-            if i > 0 {
-                assert!(
-                    interop_root_indexes[i].1 > interop_root_indexes[i - 1].1,
-                    "Stored interop root log index must be greater than the previous one"
-                );
-            }
-        }
-
         Self {
             block_context,
             starting_l1_priority_id,
-            interop_root_log_start_index,
-            interop_root_indexes,
+            last_interop_event_index,
             transactions,
             previous_block_timestamp,
             node_version,

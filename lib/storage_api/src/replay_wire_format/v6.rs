@@ -19,9 +19,7 @@ pub struct ReplayWireFormatV6 {
     pub starting_l1_priority_id: u64,
     pub transactions: Vec<ZkTransactionWireFormat>,
     #[bincode(with_serde)]
-    pub interop_root_log_start_index: InteropRootsLogIndex,
-    #[bincode(with_serde)]
-    pub interop_root_indexes: Vec<(B256, InteropRootsLogIndex)>,
+    pub last_interop_event_index: InteropRootsLogIndex,
     pub previous_block_timestamp: u64,
     #[bincode(with_serde)]
     pub node_version: semver::Version,

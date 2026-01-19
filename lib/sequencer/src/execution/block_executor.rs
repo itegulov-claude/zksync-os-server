@@ -53,7 +53,6 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
     let mut runner = VmWrapper::new(ctx, metered_state_view);
 
     let mut executed_txs = Vec::<ZkTransaction>::new();
-    let mut interop_root_log_indexes = Vec::<(B256, InteropRootsLogIndex)>::new();
     let mut cumulative_gas_used = 0u64;
     let mut purged_txs = Vec::new();
 
@@ -66,6 +65,8 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
     };
     let mut deadline: Option<Pin<Box<Sleep>>> = None; // will arm after 1st tx success
     let mut interop_roots_count = 0;
+
+    let mut last_interop_event_index = command.last_interop_event_index;
 
     // todo: a sanity check around command and interop_root_log_indexes
 
@@ -157,14 +158,13 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
                                     "Transaction executed"
                                 );
 
-                                match tx.envelope() {
-                                    ZkEnvelope::InteropRoots(interop_roots_tx) => {
-                                        interop_root_log_indexes.push((*tx.hash(), interop_roots_tx.event_log_index()));
-                                    }
-                                    _ => {}
+                                let tx_type = tx.tx_type();
+
+                                if let ZkEnvelope::InteropRoots(interop_roots_tx) = tx.inner.inner() && matches!(command.seal_policy, SealPolicy::Decide(..) | SealPolicy::UntilExhausted { allowed_to_finish_early: true }) {
+                                    last_interop_event_index = interop_roots_tx.event_log_index();
+                                    last_interop_event_index.increment_log_index();
                                 }
 
-                                let tx_type = tx.tx_type();
                                 executed_txs.push(tx);
                                 cumulative_gas_used += res.gas_used;
 
@@ -184,7 +184,6 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
                                         }
                                     }
                                 }
-
 
                                 match command.seal_policy {
                                     SealPolicy::Decide(_, limit) if executed_txs.len() >= limit => {
@@ -378,11 +377,7 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
         ReplayRecord::new(
             ctx,
             command.starting_l1_priority_id,
-            command.interop_root_log_start_index,
-            // if command is produce, interop root log indexes are constructed during the execution, otherwise we should use the ones from the command
-            command
-                .interop_root_log_indexes
-                .unwrap_or(interop_root_log_indexes),
+            last_interop_event_index,
             executed_txs,
             command.previous_block_timestamp,
             NODE_SEMVER_VERSION.clone(),

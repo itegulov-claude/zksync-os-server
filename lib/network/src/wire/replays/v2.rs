@@ -13,8 +13,7 @@ use zksync_os_types::{InteropRootsLogIndex, L1TxSerialId, ProtocolSemanticVersio
 pub struct ReplayRecord {
     pub block_context: BlockContext,
     pub starting_l1_priority_id: L1TxSerialId,
-    pub interop_root_log_start_index: InteropRootsLogIndex,
-    pub interop_root_indexes: Vec<InteropRootsMetadata>,
+    pub last_interop_event_index: InteropRootsLogIndex,
     pub transactions: Vec<ZkEnvelope>,
     pub previous_block_timestamp: u64,
     pub protocol_version: ProtocolSemanticVersion,

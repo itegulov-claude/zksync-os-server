@@ -421,7 +421,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     let next_interop_root_log_index = first_replay_record
         .as_ref()
         .map_or(InteropRootsLogIndex::default(), |record| {
-            record.interop_root_log_start_index.clone()
+            record.last_interop_event_index.clone()
         });
 
     // ========== Start InteropRootsWatcher ===========

@@ -38,8 +38,7 @@ pub struct BlockReplayStorage {
 pub enum BlockReplayColumnFamily {
     Context,
     StartingL1SerialId,
-    InteropRootLogStartIndex,
-    InteropRootIndexes,
+    LastInteropEventIndex,
     Txs,
     NodeVersion,
     ProtocolVersion,
@@ -54,8 +53,7 @@ impl NamedColumnFamily for BlockReplayColumnFamily {
     const ALL: &'static [Self] = &[
         BlockReplayColumnFamily::Context,
         BlockReplayColumnFamily::StartingL1SerialId,
-        BlockReplayColumnFamily::InteropRootLogStartIndex,
-        BlockReplayColumnFamily::InteropRootIndexes,
+        BlockReplayColumnFamily::LastInteropEventIndex,
         BlockReplayColumnFamily::Txs,
         BlockReplayColumnFamily::NodeVersion,
         BlockReplayColumnFamily::ProtocolVersion,
@@ -68,8 +66,7 @@ impl NamedColumnFamily for BlockReplayColumnFamily {
         match self {
             BlockReplayColumnFamily::Context => "context",
             BlockReplayColumnFamily::StartingL1SerialId => "last_processed_l1_tx_id",
-            BlockReplayColumnFamily::InteropRootLogStartIndex => "interop_root_log_start_index",
-            BlockReplayColumnFamily::InteropRootIndexes => "interop_root_indexes",
+            BlockReplayColumnFamily::LastInteropEventIndex => "last_interop_event_index",
             BlockReplayColumnFamily::Txs => "txs",
             BlockReplayColumnFamily::NodeVersion => "node_version",
             BlockReplayColumnFamily::ProtocolVersion => "protocol_version",
@@ -100,8 +97,7 @@ impl BlockReplayStorage {
                 ReplayRecord {
                     block_context: *genesis_context,
                     starting_l1_priority_id: 0,
-                    interop_root_log_start_index: InteropRootsLogIndex::default(),
-                    interop_root_indexes: vec![],
+                    last_interop_event_index: InteropRootsLogIndex::default(),
                     transactions: vec![],
                     previous_block_timestamp: 0,
                     node_version: NODE_SEMVER_VERSION.clone(),
@@ -147,27 +143,17 @@ impl BlockReplayStorage {
         );
 
         let interop_root_log_start_index_value = bincode::serde::encode_to_vec(
-            &record.interop_root_log_start_index,
+            &record.last_interop_event_index,
             bincode::config::standard(),
         )
-        .expect("Failed to serialize record.interop_root_log_start_index");
+        .expect("Failed to serialize record.last_interop_event_index");
 
         batch.put_cf(
-            BlockReplayColumnFamily::InteropRootLogStartIndex,
+            BlockReplayColumnFamily::LastInteropEventIndex,
             &db_key,
             &interop_root_log_start_index_value,
         );
-        let interop_root_indexes_value = bincode::serde::encode_to_vec(
-            &record.interop_root_indexes,
-            bincode::config::standard(),
-        )
-        .expect("Failed to serialize record.interop_root_indexes");
 
-        batch.put_cf(
-            BlockReplayColumnFamily::InteropRootIndexes,
-            &db_key,
-            &interop_root_indexes_value,
-        );
         batch.put_cf(BlockReplayColumnFamily::Txs, &db_key, &txs_value);
         batch.put_cf(
             BlockReplayColumnFamily::NodeVersion,
@@ -304,17 +290,11 @@ impl ReadReplay for BlockReplayStorage {
             ProtocolSemanticVersion::legacy_genesis_version()
         };
 
-        let interop_root_indexes = self
+        let last_interop_event_index = self
             .db
-            .get_cf(BlockReplayColumnFamily::InteropRootIndexes, &key)
-            .expect("Failed to read from InteropRootIndexes CF")
-            .expect("InteropRootIndexes must be written atomically with Context");
-
-        let interop_root_log_start_index = self
-            .db
-            .get_cf(BlockReplayColumnFamily::InteropRootLogStartIndex, &key)
-            .expect("Failed to read from InteropRootLogStartIndex CF")
-            .expect("InteropRootLogStartIndex must be written atomically with Context");
+            .get_cf(BlockReplayColumnFamily::LastInteropEventIndex, &key)
+            .expect("Failed to read from LastInteropEventIndex CF")
+            .expect("LastInteropEventIndex must be written atomically with Context");
 
         let force_preimages = if let Some(preimages) = self
             .db
@@ -350,17 +330,11 @@ impl ReadReplay for BlockReplayStorage {
             )
             .expect("Failed to deserialize context")
             .0,
-            interop_root_log_start_index: bincode::serde::decode_from_slice(
-                &interop_root_log_start_index,
+            last_interop_event_index: bincode::serde::decode_from_slice(
+                &last_interop_event_index,
                 bincode::config::standard(),
             )
-            .expect("Failed to deserialize interop root log start index")
-            .0,
-            interop_root_indexes: bincode::serde::decode_from_slice(
-                &interop_root_indexes,
-                bincode::config::standard(),
-            )
-            .expect("Failed to deserialize interop root indexes")
+            .expect("Failed to deserialize last interop event index")
             .0,
             transactions: bincode::decode_from_slice(&transactions, bincode::config::standard())
                 .expect("Failed to deserialize transactions")
