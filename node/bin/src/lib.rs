@@ -93,7 +93,9 @@ use zksync_os_storage_api::{
     FinalityStatus, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, WriteReplay,
     WriteRepository, WriteState,
 };
-use zksync_os_types::{PubdataMode, TransactionAcceptanceState, UpgradeTransaction};
+use zksync_os_types::{
+    InteropRootsLogIndex, PubdataMode, TransactionAcceptanceState, UpgradeTransaction,
+};
 
 const BLOCK_REPLAY_WAL_DB_NAME: &str = "block_replay_wal";
 const STATE_TREE_DB_NAME: &str = "tree";
@@ -434,6 +436,12 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         .as_ref()
         .map_or(0, |record| record.starting_l1_priority_id);
 
+    let last_interop_event_index = first_replay_record
+        .as_ref()
+        .map_or(InteropRootsLogIndex::default(), |record| {
+            record.last_interop_event_index.clone()
+        });
+
     tasks.spawn(
         L1TxWatcher::create_watcher(
             config.l1_watcher_config.clone().into(),
@@ -550,6 +558,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     // should be moved to `sequencer`
     let block_context_provider = BlockContextProvider::new(
         next_l1_priority_id,
+        last_interop_event_index,
         l1_transactions_for_sequencer,
         l1_upgrade_transactions_receiver,
         interop_transactions_receiver,
