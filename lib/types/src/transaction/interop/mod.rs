@@ -21,9 +21,6 @@ pub const L2_INTEROP_ROOT_STORAGE_ZKSYNC_OS_ADDRESS: Address =
 
 pub const INTEROP_ROOTS_TX_TYPE_ID: u8 = 125;
 
-// todo: Check if this value is good enough
-const DEFAULT_GAS_LIMIT: u64 = 72_000_000;
-
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct InteropRootsEnvelope {
     /// Hash of the transaction
@@ -39,9 +36,12 @@ pub struct InteropRootsEnvelope {
     pub inner: InteropRootsTx,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, PartialOrd)]
+/// A helper struct to store the block number and index in block of published interop roots event.
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub struct InteropRootsLogIndex {
+    /// Block number from which event was published.
     pub block_number: u64,
+    /// Index of the event in the block.
     pub index_in_block: u64,
 }
 
@@ -49,6 +49,10 @@ impl Encodable for InteropRootsLogIndex {
     fn encode(&self, out: &mut dyn BufMut) {
         self.block_number.encode(out);
         self.index_in_block.encode(out);
+    }
+
+    fn length(&self) -> usize {
+        self.block_number.length() + self.index_in_block.length()
     }
 }
 
@@ -86,7 +90,6 @@ impl InteropRootsEnvelope {
         };
 
         let transaction = InteropRootsTx {
-            gas_limit: DEFAULT_GAS_LIMIT,
             to: L2_INTEROP_ROOT_STORAGE_ZKSYNC_OS_ADDRESS,
             input: Bytes::from(calldata),
         };
@@ -123,11 +126,12 @@ impl Typed2718 for InteropRootsEnvelope {
 
 impl RlpEcdsaEncodableTx for InteropRootsEnvelope {
     fn rlp_encoded_fields_length(&self) -> usize {
-        self.inner.rlp_encoded_fields_length()
+        self.inner.rlp_encoded_fields_length() + self.last_log_index.length()
     }
 
     fn rlp_encode_fields(&self, out: &mut dyn BufMut) {
         self.inner.rlp_encode_fields(out);
+        self.last_log_index.encode(out);
     }
 }
 
@@ -136,9 +140,10 @@ impl RlpEcdsaDecodableTx for InteropRootsEnvelope {
 
     fn rlp_decode_fields(buf: &mut &[u8]) -> alloy::rlp::Result<Self> {
         let transaction = InteropRootsTx::rlp_decode_fields(buf)?;
+        let last_log_index = <InteropRootsLogIndex as Decodable>::decode(buf)?;
         Ok(Self {
             hash: transaction.calculate_hash(),
-            last_log_index: InteropRootsLogIndex::default(),
+            last_log_index,
             inner: transaction,
         })
     }
@@ -147,20 +152,22 @@ impl RlpEcdsaDecodableTx for InteropRootsEnvelope {
 impl Encodable for InteropRootsEnvelope {
     fn encode(&self, out: &mut dyn BufMut) {
         self.inner.encode(out);
+        self.last_log_index.encode(out);
     }
 
     fn length(&self) -> usize {
-        self.inner.length()
+        self.inner.length() + self.last_log_index.length()
     }
 }
 
 impl Encodable2718 for InteropRootsEnvelope {
     fn encode_2718_len(&self) -> usize {
-        self.inner.encode_2718_len()
+        self.inner.encode_2718_len() + self.last_log_index.length()
     }
 
     fn encode_2718(&self, out: &mut dyn BufMut) {
         self.inner.encode_2718(out);
+        self.last_log_index.encode(out);
     }
 }
 
@@ -173,11 +180,13 @@ impl Decodable2718 for InteropRootsEnvelope {
         let transaction = InteropRootsTx::rlp_decode(buf)
             .map_err(|_| Eip2718Error::RlpError(alloy::rlp::Error::Custom("decode failed")))?;
 
+        let last_log_index = <InteropRootsLogIndex as Decodable>::decode(buf)?;
+
         let hash = transaction.calculate_hash();
 
         Ok(Self {
             hash,
-            last_log_index: InteropRootsLogIndex::default(),
+            last_log_index,
             inner: transaction,
         })
     }
@@ -270,7 +279,6 @@ mod tests {
         // See https://ethereum.github.io/execution-apis/api-documentation/
 
         let transaction = InteropRootsTx {
-            gas_limit: 0x10000,
             to: Default::default(),
             input: Default::default(),
         };
@@ -284,10 +292,10 @@ mod tests {
         assert_eq!(
             serde_json::to_string_pretty(&tx).unwrap(),
             r#"{
-  "hash": "0xd06b6df7ff36db8daee83e3a8d5d0b1e349e57968054b3da83192341e195a848",
+  "hash": "0x0b5cf6f6f3b9deb0fd6cb66f51e15f4d751e0724401c2cd7b7df59489fe5f289",
   "initiator": "0x0000000000000000000000000000000000008001",
   "to": "0x0000000000000000000000000000000000000000",
-  "gas": "0x10000",
+  "gas": "0x0",
   "maxFeePerGas": "0x0",
   "maxPriorityFeePerGas": "0x0",
   "nonce": "0x0",
