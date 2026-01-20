@@ -64,6 +64,7 @@ use zksync_os_gas_adjuster::GasAdjuster;
 use zksync_os_genesis::{FileGenesisInputSource, Genesis, GenesisInputSource};
 use zksync_os_interface::types::BlockHashes;
 use zksync_os_internal_config::InternalConfigManager;
+use zksync_os_interop_watcher::InteropRootsWatcher;
 use zksync_os_l1_sender::commands::commit::CommitCommand;
 use zksync_os_l1_sender::commands::prove::ProofCommand;
 use zksync_os_l1_sender::pipeline_component::L1Sender;
@@ -93,7 +94,9 @@ use zksync_os_storage_api::{
     FinalityStatus, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, WriteReplay,
     WriteRepository, WriteState,
 };
-use zksync_os_types::{PubdataMode, TransactionAcceptanceState, UpgradeTransaction};
+use zksync_os_types::{
+    InteropRootsLogIndex, PubdataMode, TransactionAcceptanceState, UpgradeTransaction,
+};
 
 const BLOCK_REPLAY_WAL_DB_NAME: &str = "block_replay_wal";
 const STATE_TREE_DB_NAME: &str = "tree";
@@ -175,8 +178,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     let (l1_transactions_sender, l1_transactions_for_sequencer) = tokio::sync::mpsc::channel(5);
 
     // Channel between InteropRootsWatcher and Sequencer
-    // todo: implement InteropRootsWatcher
-    let (_interop_transactions_sender, interop_transactions_receiver) =
+    let (interop_transactions_sender, interop_transactions_receiver) =
         tokio::sync::mpsc::channel(5);
 
     // Channel between L1UpgradeWatcher and Sequencer
@@ -434,6 +436,12 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         .as_ref()
         .map_or(0, |record| record.starting_l1_priority_id);
 
+    let last_interop_event_index = first_replay_record
+        .as_ref()
+        .map_or(InteropRootsLogIndex::default(), |record| {
+            record.last_interop_event_index.clone()
+        });
+
     tasks.spawn(
         L1TxWatcher::create_watcher(
             config.l1_watcher_config.clone().into(),
@@ -445,6 +453,20 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         .expect("failed to start L1 transaction watcher")
         .run()
         .map(report_exit("L1 transaction watcher")),
+    );
+
+    tracing::info!("Initializing L1 Interop Roots Watcher");
+    tasks.spawn(
+        InteropRootsWatcher::new(
+            node_startup_state.l1_state.bridgehub.clone(),
+            interop_transactions_sender,
+            last_interop_event_index,
+            false,
+        )
+        .await
+        .expect("failed to start L1 interop roots watcher")
+        .run()
+        .map(report_exit("L1 interop roots watcher")),
     );
 
     // ======== Start Status Server ========

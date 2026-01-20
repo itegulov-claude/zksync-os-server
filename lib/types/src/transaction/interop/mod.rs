@@ -39,7 +39,7 @@ pub struct InteropRootsEnvelope {
     pub inner: InteropRootsTx,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, PartialOrd)]
 pub struct InteropRootsLogIndex {
     pub block_number: u64,
     pub index_in_block: u64,

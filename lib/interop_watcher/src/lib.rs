@@ -7,26 +7,27 @@ use alloy::{
     providers::{DynProvider, Provider},
 };
 use tokio::sync::mpsc;
-use zksync_os_contract_interface::IMessageRoot::{AppendedInteropRoot, NewInteropRoot};
+use zksync_os_contract_interface::IMessageRoot::{AppendedChainRoot, NewInteropRoot};
 use zksync_os_contract_interface::{Bridgehub, InteropRoot};
-use zksync_os_types::InteropRootsEnvelope;
+use zksync_os_types::{InteropRootsEnvelope, InteropRootsLogIndex};
 
 pub const INTEROP_ROOTS_PER_IMPORT: u64 = 100;
 const LOOKBEHIND_BLOCKS: u64 = 1000;
 
-pub struct L1InteropRootsWatcher {
+pub struct InteropRootsWatcher {
     contract_address: Address,
     provider: DynProvider,
     // first number is block number, second is log index
-    next_log_to_scan_from: Option<(u64, u64)>,
+    next_log_to_scan_from: InteropRootsLogIndex,
     gateway_mode_enabled: bool,
     output: mpsc::Sender<InteropRootsEnvelope>,
 }
 
-impl L1InteropRootsWatcher {
+impl InteropRootsWatcher {
     pub async fn new(
         bridgehub: Bridgehub<DynProvider>,
         output: mpsc::Sender<InteropRootsEnvelope>,
+        next_log_to_scan_from: InteropRootsLogIndex,
         gateway_mode_enabled: bool,
     ) -> anyhow::Result<Self> {
         let provider = bridgehub.provider().clone();
@@ -38,7 +39,7 @@ impl L1InteropRootsWatcher {
         Ok(Self {
             provider,
             contract_address,
-            next_log_to_scan_from: None,
+            next_log_to_scan_from,
             output,
             gateway_mode_enabled,
         })
@@ -54,29 +55,35 @@ impl L1InteropRootsWatcher {
 
     async fn fetch_events(
         &mut self,
-        from_block: u64,
+        start_log_index: InteropRootsLogIndex,
         to_block: u64,
-        start_log_index: u64,
-    ) -> anyhow::Result<Vec<InteropRoot>> {
+    ) -> anyhow::Result<(Vec<InteropRoot>, InteropRootsLogIndex)> {
         let event_signature = if self.gateway_mode_enabled {
             NewInteropRoot::SIGNATURE_HASH
         } else {
-            AppendedInteropRoot::SIGNATURE_HASH
+            AppendedChainRoot::SIGNATURE_HASH
         };
 
+        // todo: add binary search here to manage giant amount of logs
         let filter = Filter::new()
-            .from_block(from_block)
+            .from_block(start_log_index.block_number)
             .to_block(to_block)
             .address(self.contract_address)
             .event_signature(event_signature);
         let logs = self.provider.get_logs(&filter).await?;
 
-        let mut interop_roots = Vec::new();
-        for log in logs {
-            let log_block_number = log.block_number.unwrap();
-            let log_index_in_block = log.log_index.unwrap();
+        if logs.is_empty() {
+            return Ok((Vec::new(), InteropRootsLogIndex::default()));
+        }
 
-            if log_block_number == from_block && log_index_in_block < start_log_index {
+        let mut interop_roots = Vec::new();
+        for log in &logs {
+            let log_index = InteropRootsLogIndex {
+                block_number: log.block_number.unwrap(),
+                index_in_block: log.log_index.unwrap(),
+            };
+
+            if log_index < start_log_index {
                 continue;
             }
 
@@ -95,18 +102,21 @@ impl L1InteropRootsWatcher {
                     sides: interop_root_event.sides,
                 }
             } else {
-                let interop_root_event = AppendedInteropRoot::decode_log(&log.inner)?.data;
+                let interop_root_event = AppendedChainRoot::decode_log(&log.inner)?.data;
 
                 InteropRoot {
                     chainId: interop_root_event.chainId,
-                    blockOrBatchNumber: interop_root_event.blockNumber,
+                    blockOrBatchNumber: interop_root_event.batchNumber,
                     sides: vec![interop_root_event.chainRoot],
                 }
             };
 
             interop_roots.push(interop_root);
 
-            self.next_log_to_scan_from = Some((log_block_number, log_index_in_block + 1));
+            self.next_log_to_scan_from = InteropRootsLogIndex {
+                block_number: log_index.block_number,
+                index_in_block: log_index.index_in_block + 1,
+            };
 
             if interop_roots.len() >= INTEROP_ROOTS_PER_IMPORT as usize {
                 break;
@@ -116,41 +126,45 @@ impl L1InteropRootsWatcher {
         // if we didn't get enough interop roots, it should be safe to continue from the last block we already scanned
         // edge case would be if the last root we included was already in the last block, then we should leave the value as is(it was updated before)
         if interop_roots.len() < INTEROP_ROOTS_PER_IMPORT as usize
-            && self.next_log_to_scan_from.map(|(from_block, _)| from_block) < Some(to_block)
+            && self.next_log_to_scan_from.block_number < to_block
         {
-            self.next_log_to_scan_from = Some((to_block, 0));
+            self.next_log_to_scan_from = InteropRootsLogIndex {
+                block_number: to_block,
+                index_in_block: 0,
+            };
         }
 
-        Ok(interop_roots)
+        let last_log = logs.last().unwrap();
+
+        let last_log_index = InteropRootsLogIndex {
+            block_number: last_log.block_number.unwrap(),
+            index_in_block: last_log.log_index.unwrap(),
+        };
+
+        Ok((interop_roots, last_log_index))
     }
 
     async fn poll(&mut self) -> anyhow::Result<()> {
         let latest_block = self.provider.get_block_number().await?;
 
-        if let Some((from_block, _)) = self.next_log_to_scan_from {
-            if from_block + LOOKBEHIND_BLOCKS < latest_block {
-                tracing::warn!(
-                    from_block,
-                    latest_block,
-                    "From block is found to be behind the latest block by more than {}, it shouldn't happen normally",
-                    LOOKBEHIND_BLOCKS
-                );
-            }
+        if self.next_log_to_scan_from.block_number + LOOKBEHIND_BLOCKS < latest_block {
+            tracing::warn!(
+                from_block = self.next_log_to_scan_from.block_number,
+                latest_block,
+                "From block is found to be behind the latest block by more than {}, it shouldn't happen normally",
+                LOOKBEHIND_BLOCKS
+            );
         }
 
-        let (from_block, start_log_index) = match self.next_log_to_scan_from {
-            Some((from_block, start_log_index)) => (from_block, start_log_index),
-            None => (latest_block.saturating_sub(LOOKBEHIND_BLOCKS), 0),
-        };
-
-        let interop_roots = self
-            .fetch_events(from_block, latest_block, start_log_index)
+        let (interop_roots, last_log_index) = self
+            .fetch_events(self.next_log_to_scan_from.clone(), latest_block)
             .await?;
 
         if !interop_roots.is_empty() {
             self.output
                 .send(InteropRootsEnvelope::from_interop_roots(
                     interop_roots,
+                    last_log_index,
                     self.gateway_mode_enabled,
                 ))
                 .await?;
