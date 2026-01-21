@@ -51,7 +51,7 @@ pub struct BlockContextProvider<Mempool> {
     base_fee_override: Option<U256>,
     pubdata_price_override: Option<U256>,
     native_price_override: Option<U256>,
-    pubdata_price_provider: watch::Receiver<Option<u128>>,
+    pubdata_price_provider: watch::Receiver<Option<U256>>,
     blob_fill_ratio_provider: watch::Receiver<Option<Ratio<u64>>>,
     last_constructed_block_ctx_sender: watch::Sender<Option<BlockContext>>,
     pubdata_mode: PubdataMode,
@@ -75,7 +75,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
         base_fee_override: Option<U128>,
         pubdata_price_override: Option<U128>,
         native_price_override: Option<U128>,
-        pubdata_price_provider: watch::Receiver<Option<u128>>,
+        pubdata_price_provider: watch::Receiver<Option<U256>>,
         blob_fill_ratio_provider: watch::Receiver<Option<Ratio<u64>>>,
         last_constructed_block_ctx_sender: watch::Sender<Option<BlockContext>>,
         pubdata_mode: PubdataMode,
@@ -434,7 +434,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
         pubdata_price_override: Option<U256>,
         pubdata_mode: PubdataMode,
         previous_block_pubdata_price: Option<U256>,
-        pubdata_price_provider: &watch::Receiver<Option<u128>>,
+        pubdata_price_provider: &watch::Receiver<Option<U256>>,
         blob_fill_ratio_provider: &watch::Receiver<Option<Ratio<u64>>>,
     ) -> FeeParams {
         const NATIVE_PRICE: u128 = 1_000_000;
@@ -460,11 +460,9 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     // Default blob fill ratio to be used before `blob_fill_ratio_provider` is initialized.
                     const DEFAULT_FILL_RATIO: Ratio<u64> = Ratio::new_raw(1, 2);
 
-                    let base_pubdata_price = U256::from(
-                        pubdata_price_provider
-                            .borrow()
-                            .expect("Pubdata price must be available"),
-                    );
+                    let base_pubdata_price = pubdata_price_provider
+                        .borrow()
+                        .expect("Pubdata price must be available");
                     let native_overhead = native_price * U256::from(NATIVE_PER_BLOB_BYTE);
                     // Final pubdata price is base price + overhead depending on native price.
                     let mut pubdata_price = base_pubdata_price + native_overhead;

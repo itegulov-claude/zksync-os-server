@@ -76,7 +76,7 @@ impl<Finality: WriteFinality, BatchStorage: ReadBatch> ProcessL1Event
         &mut self,
         batch_commit: BlockCommit,
         _log: Log,
-    ) -> Result<(), L1WatcherError> {
+    ) -> Result<bool, L1WatcherError> {
         let batch_number = batch_commit.batchNumber.to::<u64>();
         let batch_hash = batch_commit.batchHash;
         let batch_commitment = batch_commit.commitment;
@@ -113,6 +113,6 @@ impl<Finality: WriteFinality, BatchStorage: ReadBatch> ProcessL1Event
                 finality.last_committed_block = last_committed_block;
             });
         }
-        Ok(())
+        Ok(true)
     }
 }

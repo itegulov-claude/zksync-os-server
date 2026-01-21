@@ -46,7 +46,7 @@ pub struct BatcherStartupConfig {
 pub struct Batcher {
     pub startup_config: BatcherStartupConfig,
     pub chain_id: u64,
-    pub chain_address: Address,
+    pub chain_address_sl: Address,
     pub pubdata_limit_bytes: u64,
     pub batcher_config: BatcherConfig,
     pub pubdata_mode: PubdataMode,
@@ -309,7 +309,7 @@ impl Batcher {
             prev_batch_info.clone(),
             batch_number,
             self.chain_id,
-            self.chain_address,
+            self.chain_address_sl,
             // we need to adapt pubdata mode depending on protocol version, to ensure automatic DA mode change during v30 upgrade
             self.pubdata_mode
                 .adapt_for_protocol_version(protocol_version),
@@ -379,7 +379,7 @@ impl Batcher {
             prev_batch_info.clone(),
             batch_number,
             self.chain_id,
-            self.chain_address,
+            self.chain_address_sl,
             // Assume pubdata mode does not change
             self.pubdata_mode,
         )?;

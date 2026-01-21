@@ -37,7 +37,7 @@ use block_cache::BlockCache;
 /// Client that connects to the main sequencer for batch verification
 pub struct BatchVerificationClient<Finality> {
     chain_id: u64,
-    diamond_proxy: Address,
+    diamond_proxy_sl: Address,
     server_address: String,
     signer: PrivateKeySigner,
     block_cache: BlockCache<Finality, (BlockOutput, ReplayRecord, BlockMerkleTreeData)>,
@@ -64,14 +64,14 @@ impl<Finality: ReadFinality> BatchVerificationClient<Finality> {
         finality: Finality,
         private_key: SecretString,
         chain_id: u64,
-        diamond_proxy: Address,
+        diamond_proxy_sl: Address,
         server_address: String,
     ) -> Self {
         Self {
             signer: PrivateKeySigner::from_str(private_key.expose_secret())
                 .expect("Invalid batch verification private key"),
             chain_id,
-            diamond_proxy,
+            diamond_proxy_sl,
             block_cache: BlockCache::new(finality),
             server_address,
         }
@@ -214,7 +214,7 @@ impl<Finality: ReadFinality> BatchVerificationClient<Finality> {
                 })
                 .collect(),
             self.chain_id,
-            self.diamond_proxy,
+            self.diamond_proxy_sl,
             request.batch_number,
             request.pubdata_mode,
         )

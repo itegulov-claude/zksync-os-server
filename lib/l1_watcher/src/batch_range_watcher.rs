@@ -195,7 +195,7 @@ impl ProcessL1Event for BatchRangeWatcher {
         &mut self,
         event: ReportCommittedBatchRangeZKsyncOS,
         log: Log,
-    ) -> Result<(), L1WatcherError> {
+    ) -> Result<bool, L1WatcherError> {
         let batch_number = event.batchNumber;
         let first_block_number = event.firstBlockNumber;
         let last_block_number = event.lastBlockNumber;
@@ -236,7 +236,7 @@ impl ProcessL1Event for BatchRangeWatcher {
                 .map_err(|_| L1WatcherError::OutputClosed)?;
             self.next_batch_number += 1;
         }
-        Ok(())
+        Ok(true)
     }
 }
 

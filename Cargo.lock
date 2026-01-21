@@ -15099,6 +15099,7 @@ dependencies = [
  "tokio",
  "tracing",
  "vise",
+ "zksync_os_rpc_api",
  "zksync_os_types",
 ]
 

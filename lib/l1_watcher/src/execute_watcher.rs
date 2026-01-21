@@ -73,7 +73,7 @@ impl<Finality: WriteFinality, BatchStorage: ReadBatch> ProcessL1Event
         &mut self,
         batch_execute: BlockExecution,
         _log: Log,
-    ) -> Result<(), L1WatcherError> {
+    ) -> Result<bool, L1WatcherError> {
         let batch_number = batch_execute.batchNumber.to::<u64>();
         let batch_hash = batch_execute.batchHash;
         let batch_commitment = batch_execute.commitment;
@@ -111,6 +111,6 @@ impl<Finality: WriteFinality, BatchStorage: ReadBatch> ProcessL1Event
                 "discovered executed batch"
             );
         }
-        Ok(())
+        Ok(true)
     }
 }

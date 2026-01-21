@@ -21,7 +21,7 @@ pub(crate) fn seal_batch(
     prev_batch_info: StoredBatchInfo,
     batch_number: u64,
     chain_id: u64,
-    chain_address: Address,
+    chain_address_sl: Address,
     pubdata_mode: PubdataMode,
 ) -> anyhow::Result<BatchForSigning<ProverInput>> {
     let block_number_from = blocks.first().unwrap().1.block_context.block_number;
@@ -41,7 +41,7 @@ pub(crate) fn seal_batch(
             })
             .collect(),
         chain_id,
-        chain_address,
+        chain_address_sl,
         batch_number,
         pubdata_mode,
     );
