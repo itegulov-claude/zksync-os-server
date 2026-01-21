@@ -7,7 +7,7 @@ use alloy::{
     providers::{DynProvider, Provider},
 };
 use tokio::sync::mpsc;
-use zksync_os_contract_interface::IMessageRoot::{AppendedChainRoot, NewInteropRoot};
+use zksync_os_contract_interface::IMessageRoot::NewInteropRoot;
 use zksync_os_contract_interface::{Bridgehub, InteropRoot};
 use zksync_os_types::{InteropRootsEnvelope, InteropRootsLogIndex};
 
@@ -19,7 +19,6 @@ pub struct InteropRootsWatcher {
     provider: DynProvider,
     // first number is block number, second is log index
     next_log_to_scan_from: InteropRootsLogIndex,
-    gateway_mode_enabled: bool,
     output: mpsc::Sender<InteropRootsEnvelope>,
 }
 
@@ -28,7 +27,6 @@ impl InteropRootsWatcher {
         bridgehub: Bridgehub<DynProvider>,
         output: mpsc::Sender<InteropRootsEnvelope>,
         next_log_to_scan_from: InteropRootsLogIndex,
-        gateway_mode_enabled: bool,
     ) -> anyhow::Result<Self> {
         let provider = bridgehub.provider().clone();
         let contract_address = bridgehub
@@ -41,7 +39,6 @@ impl InteropRootsWatcher {
             contract_address,
             next_log_to_scan_from,
             output,
-            gateway_mode_enabled,
         })
     }
 
@@ -58,18 +55,12 @@ impl InteropRootsWatcher {
         start_log_index: InteropRootsLogIndex,
         to_block: u64,
     ) -> anyhow::Result<(Vec<InteropRoot>, InteropRootsLogIndex)> {
-        let event_signature = if self.gateway_mode_enabled {
-            NewInteropRoot::SIGNATURE_HASH
-        } else {
-            AppendedChainRoot::SIGNATURE_HASH
-        };
-
         // todo: add binary search here to manage giant amount of logs
         let filter = Filter::new()
             .from_block(start_log_index.block_number)
             .to_block(to_block)
             .address(self.contract_address)
-            .event_signature(event_signature);
+            .event_signature(NewInteropRoot::SIGNATURE_HASH);
         let logs = self.provider.get_logs(&filter).await?;
 
         if logs.is_empty() {
@@ -86,29 +77,18 @@ impl InteropRootsWatcher {
             if log_index < start_log_index {
                 continue;
             }
+            let interop_root_event = NewInteropRoot::decode_log(&log.inner)?.data;
 
-            let interop_root = if self.gateway_mode_enabled {
-                let interop_root_event = NewInteropRoot::decode_log(&log.inner)?.data;
+            anyhow::ensure!(
+                interop_root_event.sides.len() == 1,
+                "Expected exactly one side for interop root, found {}",
+                interop_root_event.sides.len()
+            );
 
-                anyhow::ensure!(
-                    interop_root_event.sides.len() == 1,
-                    "Expected exactly one side for interop root, found {}",
-                    interop_root_event.sides.len()
-                );
-
-                InteropRoot {
-                    chainId: interop_root_event.chainId,
-                    blockOrBatchNumber: interop_root_event.blockNumber,
-                    sides: interop_root_event.sides,
-                }
-            } else {
-                let interop_root_event = AppendedChainRoot::decode_log(&log.inner)?.data;
-
-                InteropRoot {
-                    chainId: interop_root_event.chainId,
-                    blockOrBatchNumber: interop_root_event.batchNumber,
-                    sides: vec![interop_root_event.chainRoot],
-                }
+            let interop_root = InteropRoot {
+                chainId: interop_root_event.chainId,
+                blockOrBatchNumber: interop_root_event.blockNumber,
+                sides: interop_root_event.sides,
             };
 
             interop_roots.push(interop_root);
@@ -165,7 +145,6 @@ impl InteropRootsWatcher {
                 .send(InteropRootsEnvelope::from_interop_roots(
                     interop_roots,
                     last_log_index,
-                    self.gateway_mode_enabled,
                 ))
                 .await?;
         }

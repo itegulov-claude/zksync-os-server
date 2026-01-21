@@ -35,7 +35,7 @@ pub struct InteropRootsEnvelope {
 }
 
 /// A helper struct to store the block number and index in block of published interop roots event.
-#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, Eq, PartialEq, PartialOrd)]
 pub struct InteropRootsLogIndex {
     /// Block number from which event was published.
     pub block_number: u64,
