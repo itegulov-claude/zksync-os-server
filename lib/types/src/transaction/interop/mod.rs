@@ -9,7 +9,6 @@ use alloy::rpc::types::{AccessList, SignedAuthorization};
 use alloy::sol_types::SolCall;
 use alloy_rlp::{BufMut, Decodable, Encodable};
 use serde::{Deserialize, Serialize};
-use zksync_os_contract_interface::IMessageRoot::addInteropRootCall;
 use zksync_os_contract_interface::{IMessageRoot::addInteropRootsInBatchCall, InteropRoot};
 
 pub mod tx;
@@ -27,11 +26,6 @@ pub struct InteropRootsEnvelope {
     /// Stored in an envelope and calculated separately from transaction as hash of transaction is not part of transaction itself.
     #[serde(skip)]
     pub hash: B256,
-    /// Log index of the first event from which the transaction was created.
-    /// In case we use demo-version, it is the index of the only one event in transaction.
-    /// Stored in an envelope to be able to easier keep track of it, but it is not part of the transaction
-    #[serde(skip)]
-    pub first_log_index: InteropRootsLogIndex,
     /// Log index of the last event from which the transaction was created.
     /// Stored in an envelope to be able to easier keep track of it, but it is not part of the transaction
     #[serde(skip)]
@@ -72,27 +66,13 @@ impl Decodable for InteropRootsLogIndex {
 impl InteropRootsEnvelope {
     pub fn from_interop_roots(
         interop_roots: Vec<InteropRoot>,
-        first_log_index: InteropRootsLogIndex,
         last_log_index: InteropRootsLogIndex,
-        is_gateway: bool,
     ) -> Self {
-        let calldata = if is_gateway {
+        let calldata = 
             addInteropRootsInBatchCall {
                 interopRootsInput: interop_roots,
             }
-            .abi_encode()
-        } else {
-            // interop roots amount should be 1 for non-gateway transactions
-            assert_eq!(interop_roots.len(), 1);
-            let interop_root = interop_roots[0].clone();
-
-            addInteropRootCall {
-                chainId: interop_root.chainId,
-                blockOrBatchNumber: interop_root.blockOrBatchNumber,
-                sides: interop_root.sides,
-            }
-            .abi_encode()
-        };
+            .abi_encode();
 
         let transaction = InteropRootsTx {
             to: L2_INTEROP_ROOT_STORAGE_ZKSYNC_OS_ADDRESS,
@@ -101,22 +81,13 @@ impl InteropRootsEnvelope {
 
         Self {
             hash: transaction.calculate_hash(),
-            first_log_index,
             last_log_index,
             inner: transaction,
         }
     }
 
     pub fn interop_roots_count(&self) -> u64 {
-        if let Ok(interop_roots) = addInteropRootsInBatchCall::abi_decode(&self.inner.input) {
-            interop_roots.interopRootsInput.len() as u64
-        } else {
-            let interop_root = addInteropRootCall::abi_decode(&self.inner.input)
-                .expect("Failed to decode interop root calldata");
-            // todo: should be 1 if i remember correctly
-            assert_eq!(interop_root.sides.len(), 1);
-            1
-        }
+        addInteropRootsInBatchCall::abi_decode(&self.inner.input).expect("Failed to decode interop roots calldata").interopRootsInput.len() as u64
     }
 
     pub fn hash(&self) -> &B256 {
@@ -133,13 +104,11 @@ impl Typed2718 for InteropRootsEnvelope {
 impl RlpEcdsaEncodableTx for InteropRootsEnvelope {
     fn rlp_encoded_fields_length(&self) -> usize {
         self.inner.rlp_encoded_fields_length()
-            + self.first_log_index.length()
             + self.last_log_index.length()
     }
 
     fn rlp_encode_fields(&self, out: &mut dyn BufMut) {
         self.inner.rlp_encode_fields(out);
-        self.first_log_index.encode(out);
         self.last_log_index.encode(out);
     }
 }
@@ -149,11 +118,9 @@ impl RlpEcdsaDecodableTx for InteropRootsEnvelope {
 
     fn rlp_decode_fields(buf: &mut &[u8]) -> alloy::rlp::Result<Self> {
         let transaction = InteropRootsTx::rlp_decode_fields(buf)?;
-        let first_log_index = <InteropRootsLogIndex as Decodable>::decode(buf)?;
         let last_log_index = <InteropRootsLogIndex as Decodable>::decode(buf)?;
         Ok(Self {
             hash: transaction.calculate_hash(),
-            first_log_index,
             last_log_index,
             inner: transaction,
         })
@@ -163,23 +130,21 @@ impl RlpEcdsaDecodableTx for InteropRootsEnvelope {
 impl Encodable for InteropRootsEnvelope {
     fn encode(&self, out: &mut dyn BufMut) {
         self.inner.encode(out);
-        self.first_log_index.encode(out);
         self.last_log_index.encode(out);
     }
 
     fn length(&self) -> usize {
-        self.inner.length() + self.first_log_index.length() + self.last_log_index.length()
+        self.inner.length() + self.last_log_index.length()
     }
 }
 
 impl Encodable2718 for InteropRootsEnvelope {
     fn encode_2718_len(&self) -> usize {
-        self.inner.encode_2718_len() + self.first_log_index.length() + self.last_log_index.length()
+        self.inner.encode_2718_len() + self.last_log_index.length()
     }
 
     fn encode_2718(&self, out: &mut dyn BufMut) {
         self.inner.encode_2718(out);
-        self.first_log_index.encode(out);
         self.last_log_index.encode(out);
     }
 }
@@ -193,14 +158,12 @@ impl Decodable2718 for InteropRootsEnvelope {
         let transaction = InteropRootsTx::rlp_decode(buf)
             .map_err(|_| Eip2718Error::RlpError(alloy::rlp::Error::Custom("decode failed")))?;
 
-        let first_log_index = <InteropRootsLogIndex as Decodable>::decode(buf)?;
         let last_log_index = <InteropRootsLogIndex as Decodable>::decode(buf)?;
 
         let hash = transaction.calculate_hash();
 
         Ok(Self {
             hash,
-            first_log_index,
             last_log_index,
             inner: transaction,
         })
@@ -300,7 +263,6 @@ mod tests {
 
         let tx = InteropRootsEnvelope {
             hash: transaction.calculate_hash(),
-            first_log_index: InteropRootsLogIndex::default(),
             last_log_index: InteropRootsLogIndex::default(),
             inner: transaction,
         };
