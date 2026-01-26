@@ -45,7 +45,8 @@ impl InteropRootsAccumulator {
         Self(Vec::new())
     }
 
-    /// Adds a root to the accumulator
+    /// Adds a root to the accumulator and takes the transaction envelope if
+    /// the limit of roots per transaction is reached
     ///
     /// Returns:
     /// - `Some(envelope)` if the limit of roots amount is reached and we can return the transaction
@@ -67,7 +68,7 @@ impl InteropRootsAccumulator {
     ///
     /// Returns:
     /// - `Some(envelope)` if there are roots accumulated
-    /// - `None` if there are no roots in accumulator
+    /// - `None` if accumulator is empty
     pub fn take_tx(&mut self) -> Option<IndexedInteropRootsEnvelope> {
         if self.0.is_empty() {
             None
@@ -208,6 +209,7 @@ impl Stream for BestTransactionsStream<'_> {
                         {
                             return Poll::Ready(Some(envelope.into()));
                         }
+                        // Continue and try to take one more interop root if possible
                         continue;
                     }
                     Poll::Pending if this.provide_only_interop_txs => {
