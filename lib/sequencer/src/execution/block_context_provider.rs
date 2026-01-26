@@ -17,8 +17,9 @@ use zksync_os_mempool::{
 };
 use zksync_os_storage_api::ReplayRecord;
 use zksync_os_types::{
-    ExecutionVersion, IndexedInteropRootsEnvelope, InteropRootsLogIndex, L1PriorityEnvelope,
-    L2Envelope, ProtocolSemanticVersion, UpgradeTransaction, ZkEnvelope,
+    ExecutionVersion, IndexedInteropRoot, IndexedInteropRootsEnvelope, InteropRootsEnvelope,
+    InteropRootsLogIndex, L1PriorityEnvelope, L2Envelope, ProtocolSemanticVersion,
+    UpgradeTransaction, ZkEnvelope,
 };
 
 /// Component that turns `BlockCommand`s into `PreparedBlockCommand`s.
@@ -36,7 +37,7 @@ pub struct BlockContextProvider<Mempool> {
     next_interop_event_index: InteropRootsLogIndex,
     l1_transactions: mpsc::Receiver<L1PriorityEnvelope>,
     upgrade_transactions: mpsc::Receiver<UpgradeTransaction>,
-    interop_transactions: mpsc::Receiver<IndexedInteropRootsEnvelope>,
+    interop_roots: mpsc::Receiver<IndexedInteropRoot>,
     l2_mempool: Mempool,
     block_hashes_for_next_block: BlockHashes,
     previous_block_timestamp: u64,
@@ -58,7 +59,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
         next_interop_event_index: InteropRootsLogIndex,
         l1_transactions: mpsc::Receiver<L1PriorityEnvelope>,
         upgrade_transactions: mpsc::Receiver<UpgradeTransaction>,
-        interop_transactions: mpsc::Receiver<IndexedInteropRootsEnvelope>,
+        interop_roots: mpsc::Receiver<IndexedInteropRoot>,
         l2_mempool: Mempool,
         block_hashes_for_next_block: BlockHashes,
         previous_block_timestamp: u64,
@@ -75,7 +76,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
             next_interop_event_index,
             l1_transactions,
             upgrade_transactions,
-            interop_transactions,
+            interop_roots,
             l2_mempool,
             block_hashes_for_next_block,
             previous_block_timestamp,
@@ -101,7 +102,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                 let mut best_txs = best_transactions(
                     &self.l2_mempool,
                     &mut self.l1_transactions,
-                    &mut self.interop_transactions,
+                    &mut self.interop_roots,
                     &mut self.upgrade_transactions,
                 );
 
@@ -318,8 +319,27 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
             match tx.envelope() {
                 ZkEnvelope::InteropRoots(interop_tx) => match cmd_type {
                     BlockCommandType::Replay | BlockCommandType::Rebuild => {
-                        // If block is being replayed we must fetch equivalent interop root tx from SL
-                        let indexed_interop_tx = self.interop_transactions.recv().await.unwrap();
+                        // Since transaction can contain multiple interop roots, we need to fetch all of them
+                        let mut interop_roots = Vec::new();
+
+                        for _ in 0..interop_tx.interop_roots_count() {
+                            let indexed_interop_root = self
+                                .interop_roots
+                                .recv()
+                                .await
+                                .expect("Failed to receive interop root");
+                            interop_roots.push(indexed_interop_root);
+                        }
+
+                        let indexed_interop_tx: IndexedInteropRootsEnvelope =
+                            IndexedInteropRootsEnvelope {
+                                log_index: interop_roots.last().unwrap().log_index.clone(),
+                                envelope: InteropRootsEnvelope::from_interop_roots(
+                                    interop_roots.iter().map(|r| r.root.clone()).collect(),
+                                ),
+                            };
+
+                        // If block is being replayed we must fetch equivalent interop roots(in same order) from SL
                         assert_eq!(&indexed_interop_tx.envelope, interop_tx);
                         // We use its `log_index` to update `next_interop_event_index`.
                         // NOTE: `block_output.last_interop_log_index` (see usage below) is empty

@@ -11,8 +11,9 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 use zksync_os_types::{
-    IndexedInteropRootsEnvelope, InteropRootsLogIndex, L1PriorityEnvelope, L1UpgradeEnvelope,
-    L2Envelope, L2Transaction, UpgradeTransaction, ZkTransaction,
+    IndexedInteropRoot, IndexedInteropRootsEnvelope, InteropRootsEnvelope, InteropRootsLogIndex,
+    L1PriorityEnvelope, L1UpgradeEnvelope, L2Envelope, L2Transaction, UpgradeTransaction,
+    ZkTransaction,
 };
 
 pub trait TxStream: Stream {
@@ -22,7 +23,7 @@ pub trait TxStream: Stream {
 pub struct BestTransactionsStream<'a> {
     l1_transactions: &'a mut mpsc::Receiver<L1PriorityEnvelope>,
     pending_upgrade_transactions: &'a mut mpsc::Receiver<UpgradeTransaction>,
-    interop_transactions: &'a mut mpsc::Receiver<IndexedInteropRootsEnvelope>,
+    interop_transactions: &'a mut mpsc::Receiver<IndexedInteropRoot>,
     pending_transactions_listener: mpsc::Receiver<TxHash>,
     best_l2_transactions:
         Box<dyn BestTransactions<Item = Arc<ValidPoolTransaction<L2PooledTransaction>>>>,
@@ -31,6 +32,44 @@ pub struct BestTransactionsStream<'a> {
     peeked_upgrade_info: Option<UpgradeTransaction>,
     txs_already_provided: bool,
     provide_only_interop_txs: bool,
+}
+
+const INTEROP_ROOTS_PER_IMPORT: usize = 100;
+
+struct InteropRootsAccumulator(Vec<IndexedInteropRoot>);
+
+impl InteropRootsAccumulator {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn add_root_and_try_take_tx(
+        &mut self,
+        root: IndexedInteropRoot,
+    ) -> Option<IndexedInteropRootsEnvelope> {
+        self.0.push(root);
+
+        if self.0.len() == INTEROP_ROOTS_PER_IMPORT {
+            self.take_tx()
+        } else {
+            None
+        }
+    }
+
+    pub fn take_tx(&mut self) -> Option<IndexedInteropRootsEnvelope> {
+        if self.0.is_empty() {
+            None
+        } else {
+            let tx = IndexedInteropRootsEnvelope {
+                log_index: self.0.last().unwrap().log_index.clone(),
+                envelope: InteropRootsEnvelope::from_interop_roots(
+                    self.0.iter().map(|r| r.root.clone()).collect(),
+                ),
+            };
+            self.0.clear();
+            Some(tx)
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -97,7 +136,7 @@ impl From<IndexedInteropRootsEnvelope> for ZkPoolTransaction {
 pub fn best_transactions<'a>(
     l2_mempool: &impl L2TransactionPool,
     l1_transactions: &'a mut mpsc::Receiver<L1PriorityEnvelope>,
-    interop_transactions: &'a mut mpsc::Receiver<IndexedInteropRootsEnvelope>,
+    interop_transactions: &'a mut mpsc::Receiver<IndexedInteropRoot>,
     pending_upgrade_transactions: &'a mut mpsc::Receiver<UpgradeTransaction>,
 ) -> BestTransactionsStream<'a> {
     let pending_transactions_listener =
@@ -121,6 +160,9 @@ impl Stream for BestTransactionsStream<'_> {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
+
+        let mut interop_roots_accumulator = InteropRootsAccumulator::new();
+
         loop {
             if let Some(tx) = this.peeked_tx.take() {
                 return Poll::Ready(Some(tx));
@@ -148,14 +190,28 @@ impl Stream for BestTransactionsStream<'_> {
                     Poll::Ready(Some(tx)) => {
                         // If first transaction in stream was interop one we should provide only interop transactions
                         this.provide_only_interop_txs = true;
-                        return Poll::Ready(Some(tx.into()));
+                        // If reach the limit of interop roots, return transaction
+                        if let Some(envelope) =
+                            interop_roots_accumulator.add_root_and_try_take_tx(tx)
+                        {
+                            return Poll::Ready(Some(envelope.into()));
+                        }
+                        continue;
                     }
                     Poll::Pending if this.provide_only_interop_txs => {
+                        // If there is a transaction accumulated, return it
+                        if let Some(envelope) = interop_roots_accumulator.take_tx() {
+                            return Poll::Ready(Some(envelope.into()));
+                        }
                         return Poll::Pending;
                     }
-                    // This arm is reachable in case if first transaction wasn't interop and we can execute other transactions
+                    // This arm is reachable in case if first transaction wasn't interop, so we should try executing other transactions
                     Poll::Pending => {}
-                    Poll::Ready(None) => return Poll::Ready(None),
+                    Poll::Ready(None) => {
+                        // we should not return anything if the stream was closed
+                        // todo: Should we return accumulated transaction though?
+                        return Poll::Ready(None);
+                    }
                 }
             }
 
