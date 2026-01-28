@@ -101,6 +101,12 @@ where
                 _ => false,
             };
 
+            let block_time = if let BlockCommand::Produce(produce_command) = &cmd {
+                Some(produce_command.block_time)
+            } else {
+                None
+            };
+
             tracing::info!(
                 block_number,
                 cmd = cmd.to_string(),
@@ -175,7 +181,7 @@ where
 
             // TODO: would updating mempool in parallel with state make sense?
             self.block_context_provider
-                .on_canonical_state_change(&block_output, &replay_record, cmd_type)
+                .on_canonical_state_change(&block_output, &replay_record, cmd_type, block_time)
                 .await;
             let purged_txs_hashes = purged_txs.into_iter().map(|(hash, _)| hash).collect();
             self.block_context_provider.remove_txs(purged_txs_hashes);

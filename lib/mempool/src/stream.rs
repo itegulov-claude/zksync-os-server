@@ -9,6 +9,7 @@ use reth_transaction_pool::{BestTransactions, TransactionListenerKind, ValidPool
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Instant;
 use tokio::sync::mpsc;
 use zksync_os_types::{
     IndexedInteropRootsEnvelope, InteropRootsLogIndex, L1PriorityEnvelope, L1UpgradeEnvelope,
@@ -31,6 +32,7 @@ pub struct BestTransactionsStream<'a> {
     peeked_upgrade_info: Option<UpgradeTransaction>,
     txs_already_provided: bool,
     provide_only_interop_txs: bool,
+    interop_txs_allowed_after: Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +101,7 @@ pub fn best_transactions<'a>(
     l1_transactions: &'a mut mpsc::Receiver<L1PriorityEnvelope>,
     interop_transactions: &'a mut mpsc::Receiver<IndexedInteropRootsEnvelope>,
     pending_upgrade_transactions: &'a mut mpsc::Receiver<UpgradeTransaction>,
+    interop_txs_allowed_after: Instant,
 ) -> BestTransactionsStream<'a> {
     let pending_transactions_listener =
         l2_mempool.pending_transactions_listener_for(TransactionListenerKind::All);
@@ -113,6 +116,7 @@ pub fn best_transactions<'a>(
         peeked_upgrade_info: None,
         txs_already_provided: false,
         provide_only_interop_txs: false,
+        interop_txs_allowed_after,
     }
 }
 
@@ -143,7 +147,9 @@ impl Stream for BestTransactionsStream<'_> {
                 }
             }
 
-            if !this.txs_already_provided || this.provide_only_interop_txs {
+            if Instant::now() >= this.interop_txs_allowed_after
+                && (!this.txs_already_provided || this.provide_only_interop_txs)
+            {
                 match this.interop_transactions.poll_recv(cx) {
                     Poll::Ready(Some(tx)) => {
                         // If first transaction in stream was interop one we should provide only interop transactions

@@ -9,7 +9,7 @@ use alloy::primitives::{Address, BlockHash, TxHash, U256};
 use anyhow::Context as _;
 use reth_execution_types::ChangedAccount;
 use reth_primitives::SealedBlock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{mpsc, watch};
 use zksync_os_interface::types::{BlockContext, BlockHashes};
 use zksync_os_mempool::{
@@ -49,6 +49,7 @@ pub struct BlockContextProvider<Mempool> {
     fee_collector_address: Address,
     last_constructed_block_ctx_sender: watch::Sender<Option<BlockContext>>,
     fee_provider: FeeProvider,
+    next_interop_block_allowed_after: Instant,
 }
 
 impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
@@ -86,6 +87,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
             fee_collector_address,
             last_constructed_block_ctx_sender,
             fee_provider,
+            next_interop_block_allowed_after: Instant::now(),
         }
     }
 
@@ -103,6 +105,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                     &mut self.l1_transactions,
                     &mut self.interop_transactions,
                     &mut self.upgrade_transactions,
+                    self.next_interop_block_allowed_after,
                 );
 
                 // Peek to ensure that at least one transaction is available so that timestamp is accurate.
@@ -312,6 +315,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
         block_output: &BlockOutputExt,
         replay_record: &ReplayRecord,
         cmd_type: BlockCommandType,
+        block_time: Option<Duration>,
     ) {
         let mut l2_transactions = Vec::new();
         for tx in &replay_record.transactions {
@@ -329,7 +333,12 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
                             index_in_block: indexed_interop_tx.log_index.index_in_block + 1,
                         };
                     }
-                    BlockCommandType::Produce => {}
+                    BlockCommandType::Produce => {
+                        if let Some(block_time) = block_time {
+                            self.next_interop_block_allowed_after =
+                                Instant::now().checked_add(3 * block_time).unwrap();
+                        }
+                    }
                 },
                 ZkEnvelope::L1(l1_tx) => {
                     self.next_l1_priority_id = l1_tx.priority_id() + 1;
