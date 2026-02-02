@@ -43,10 +43,7 @@ impl InteropTxPool {
         self.inner.write().unwrap().add_root(root);
     }
 
-    pub fn on_canonical_state_change(
-        &mut self,
-        txs: Vec<InteropRootsEnvelope>,
-    ) -> Option<InteropRootsLogIndex> {
+    pub fn on_canonical_state_change(&mut self, txs: Vec<InteropRootsEnvelope>) -> Option<u64> {
         self.inner.write().unwrap().on_canonical_state_change(txs)
     }
 }
@@ -145,10 +142,7 @@ impl InteropTxPoolInner {
 
     /// Cleans up the stream and removes all roots that were sent in transactions
     /// Returns the last log index of executed interop root
-    pub fn on_canonical_state_change(
-        &mut self,
-        txs: Vec<InteropRootsEnvelope>,
-    ) -> Option<u64> {
+    pub fn on_canonical_state_change(&mut self, txs: Vec<InteropRootsEnvelope>) -> Option<u64> {
         let mut log_id = None;
         for tx in txs {
             let starting_index = self.pending_roots.len() - tx.interop_roots_count() as usize;

@@ -375,10 +375,7 @@ impl<Mempool: L2TransactionPool> BlockContextProvider<Mempool> {
             self.interop_tx_pool.on_canonical_state_change(interop_txs)
         {
             self.next_interop_tx_allowed_after = Instant::now() + self.service_block_delay;
-            self.next_interop_event_index = InteropRootsLogIndex {
-                block_number: last_interop_log_index.block_number,
-                index_in_block: last_interop_log_index.index_in_block + 1,
-            };
+            self.next_interop_root_id = last_interop_root_id + 1;
         }
         EXECUTION_METRICS
             .next_l1_priority_id
