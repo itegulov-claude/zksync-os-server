@@ -164,10 +164,13 @@ impl InteropTxPoolInner {
         let mut log_index = InteropRootsLogIndex::default();
 
         for tx in txs {
-            let mut roots = Vec::new();
-            for _ in 0..tx.interop_roots_count() {
-                roots.push(self.pending_roots.pop_back().unwrap());
-            }
+            let starting_index = self.pending_roots.len() - tx.interop_roots_count() as usize;
+
+            let roots = self
+                .pending_roots
+                .drain(starting_index..)
+                .rev()
+                .collect::<Vec<_>>();
 
             let envelope = InteropRootsEnvelope::from_interop_roots(
                 roots.iter().map(|r| r.root.clone()).collect(),

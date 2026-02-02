@@ -559,7 +559,8 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         config.sequencer_config.block_pubdata_limit_bytes,
         // We set the value to the same as for the batch, since it should be enforced by batcher, but don't want to exceed it for the block
         config.batcher_config.interop_roots_per_batch_limit,
-        config.sequencer_config.interop_roots_per_tx,
+        // todo: change to config.sequencer_config.interop_roots_per_tx when contracts are updated
+        1,
         current_protocol_version.clone(),
         config.sequencer_config.fee_collector_address,
         last_constructed_block_ctx_sender,

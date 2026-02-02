@@ -82,7 +82,15 @@ impl Stream for BestTransactionsStream<'_> {
 
             if !this.txs_already_provided || this.provide_only_interop_txs {
                 match this.interop_transactions.poll_next_unpin(cx) {
-                    Poll::Ready(Some(tx)) => return Poll::Ready(Some(tx.into())),
+                    Poll::Ready(Some(tx)) => {
+                        // If first transaction in stream was interop one we should provide only interop transactions
+                        this.provide_only_interop_txs = true;
+                        return Poll::Ready(Some(tx.into()));
+                    }
+                    Poll::Pending if this.provide_only_interop_txs => {
+                        return Poll::Pending;
+                    }
+                    // This arm is reachable in case if first transaction wasn't interop and we can execute other transactions
                     Poll::Pending => {}
                     Poll::Ready(None) => return Poll::Ready(None),
                 }
