@@ -411,28 +411,43 @@ impl<F: TxFiller<Ethereum> + WalletProvider<Wallet = EthereumWallet>, P: Provide
             eip1559_est.max_priority_fee_per_gas,
             "estimated median priority fee (20% percentile) for the last 10 blocks"
         );
-        if eip1559_est.max_fee_per_gas > self.config.max_fee_per_gas_wei {
+
+        // Use the minimum of estimated and configured values for gas fields
+        let capped_max_fee_per_gas = if eip1559_est.max_fee_per_gas > self.config.max_fee_per_gas_wei {
             tracing::warn!(
-                max_fee_per_gas = self.config.max_fee_per_gas_wei,
-                estimated_max_fee_per_gas = eip1559_est.max_fee_per_gas,
-                "Base token updater's configured maxFeePerGas is lower than the one estimated from network"
+                "Base token updater's configured maxFeePerGas ({}) \
+                 is lower than the one estimated from network ({}), \
+                 using the configured base fee value ({}) for base token price adjustment",
+                self.config.max_fee_per_gas_wei,
+                eip1559_est.max_fee_per_gas,
+                self.config.max_fee_per_gas_wei
             );
-        }
-        if eip1559_est.max_priority_fee_per_gas > self.config.max_priority_fee_per_gas_wei {
+            self.config.max_fee_per_gas_wei
+        } else {
+            eip1559_est.max_fee_per_gas
+        };
+
+        let capped_max_priority_fee_per_gas = if eip1559_est.max_priority_fee_per_gas > self.config.max_priority_fee_per_gas_wei {
             tracing::warn!(
-                max_priority_fee_per_gas = self.config.max_priority_fee_per_gas_wei,
-                estimated_max_priority_fee_per_gas = eip1559_est.max_priority_fee_per_gas,
-                "Base token updater's configured maxPriorityFeePerGas is lower than the one estimated from network"
+                "Base token updater's configured max_priority_fee_per_gas ({}) \
+                 is lower than the one estimated from network ({}), \
+                 using the configured priority fee value ({}) for base token price adjustment",
+                self.config.max_priority_fee_per_gas_wei,
+                eip1559_est.max_priority_fee_per_gas,
+                self.config.max_priority_fee_per_gas_wei
             );
-        }
+            self.config.max_priority_fee_per_gas_wei
+        } else {
+            eip1559_est.max_priority_fee_per_gas
+        };
 
         let tx_request = self
             .chain_admin_contract
             .setTokenMultiplier(self.zk_chain_address, numer, denom)
             .into_transaction_request()
             .with_from(token_multiplier_setter_address)
-            .with_max_fee_per_gas(self.config.max_fee_per_gas_wei)
-            .with_max_priority_fee_per_gas(self.config.max_priority_fee_per_gas_wei);
+            .with_max_fee_per_gas(capped_max_fee_per_gas)
+            .with_max_priority_fee_per_gas(capped_max_priority_fee_per_gas);
         let provider = self.chain_admin_contract.provider();
         let tx_handle = provider.send_transaction(tx_request).await?;
         let receipt = tx_handle
