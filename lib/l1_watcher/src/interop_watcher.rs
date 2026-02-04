@@ -1,14 +1,11 @@
-use std::sync::Arc;
-
-use alloy::primitives::BlockNumber;
-use alloy::providers::Provider;
 use alloy::rpc::types::Log;
 use alloy::{primitives::Address, providers::DynProvider};
 use zksync_os_contract_interface::IMessageRoot::NewInteropRoot;
-use zksync_os_contract_interface::{Bridgehub, InteropRoot, MessageRoot};
+use zksync_os_contract_interface::{Bridgehub, InteropRoot};
 use zksync_os_mempool::InteropTxPool;
 use zksync_os_types::IndexedInteropRoot;
 
+use crate::util::find_l1_block_by_interop_root_id;
 use crate::watcher::{L1Watcher, L1WatcherError};
 use crate::{L1WatcherConfig, ProcessL1Event};
 
@@ -50,64 +47,6 @@ impl InteropWatcher {
             this.into(),
         ))
     }
-}
-
-async fn find_l1_block_by_interop_root_id(
-    bridgehub: Bridgehub<DynProvider>,
-    next_interop_root_id: u64,
-) -> anyhow::Result<BlockNumber> {
-    let message_root_address = bridgehub.message_root_address().await?;
-    let message_root = MessageRoot::new(message_root_address, bridgehub.provider().clone());
-
-    find_l1_block_by_predicate(
-        Arc::new(message_root),
-        0,
-        move |message_root, block| async move {
-            let res = message_root
-                .total_published_interop_roots(block.into())
-                .await?;
-            Ok(res >= next_interop_root_id)
-        },
-    )
-    .await
-}
-
-pub async fn find_l1_block_by_predicate<Fut: Future<Output = anyhow::Result<bool>>>(
-    message_root: Arc<MessageRoot<DynProvider>>,
-    start_block_number: BlockNumber,
-    predicate: impl Fn(Arc<MessageRoot<DynProvider>>, u64) -> Fut,
-) -> anyhow::Result<BlockNumber> {
-    let latest = message_root.provider().get_block_number().await?;
-
-    let guarded_predicate =
-        async |message_root: Arc<MessageRoot<DynProvider>>, block: u64| -> anyhow::Result<bool> {
-            if !message_root.code_exists_at_block(block.into()).await? {
-                // return early if contract is not deployed yet - otherwise `predicate` might fail
-                return Ok(false);
-            }
-            predicate(message_root, block).await
-        };
-
-    // Ensure the predicate is true by the upper bound, or bail early.
-    if !guarded_predicate(message_root.clone(), latest).await? {
-        anyhow::bail!(
-            "Condition not satisfied up to latest block: contract not deployed yet \
-             or target not reached.",
-        );
-    }
-
-    // Binary search on [0, latest] for the first block where predicate is true.
-    let (mut lo, mut hi) = (start_block_number, latest);
-    while lo < hi {
-        let mid = (lo + hi) / 2;
-        if guarded_predicate(message_root.clone(), mid).await? {
-            hi = mid;
-        } else {
-            lo = mid + 1;
-        }
-    }
-
-    Ok(lo)
 }
 
 #[async_trait::async_trait]

@@ -12,7 +12,7 @@ use zksync_os_batch_types::{BatchInfo, DiscoveredCommittedBatch};
 use zksync_os_contract_interface::IExecutor::ReportCommittedBatchRangeZKsyncOS;
 use zksync_os_contract_interface::calldata::CommitCalldata;
 use zksync_os_contract_interface::models::CommitBatchInfo;
-use zksync_os_contract_interface::{IExecutor, ZkChain};
+use zksync_os_contract_interface::{Bridgehub, IExecutor, MessageRoot, ZkChain};
 use zksync_os_types::ProtocolSemanticVersion;
 
 pub const ANVIL_L1_CHAIN_ID: u64 = 31337;
@@ -272,6 +272,51 @@ pub async fn find_l1_execute_block_by_batch_number(
     })
     .await
 }
+
+
+pub async fn find_l1_block_by_interop_root_id(
+    bridgehub: Bridgehub<DynProvider>,
+    next_interop_root_id: u64,
+) -> anyhow::Result<BlockNumber> {
+    let message_root_address = bridgehub.message_root_address().await?;
+    let message_root = Arc::new(    MessageRoot::new(message_root_address, bridgehub.provider().clone()));
+
+    let latest = message_root.provider().get_block_number().await?;
+
+    let guarded_predicate =
+        async |message_root: Arc<MessageRoot<DynProvider>>, block: u64| -> anyhow::Result<bool> {
+            if !message_root.code_exists_at_block(block.into()).await? {
+                // return early if contract is not deployed yet - otherwise `predicate` might fail
+                return Ok(false);
+            }
+            let res = message_root
+                .total_published_interop_roots(block.into())
+                .await?;
+            Ok(res >= next_interop_root_id)
+        };
+
+    // Ensure the predicate is true by the upper bound, or bail early.
+    if !guarded_predicate(message_root.clone(), latest).await? {
+        anyhow::bail!(
+            "Condition not satisfied up to latest block: contract not deployed yet \
+             or target not reached.",
+        );
+    }
+
+    // Binary search on [0, latest] for the first block where predicate is true.
+    let (mut lo, mut hi) = (0, latest);
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if guarded_predicate(message_root.clone(), mid).await? {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+
+    Ok(lo)
+}
+
 
 /// Fetches and decodes stored batch data for batch `batch_number` that is expected to have been
 /// committed in `l1_block_number`. Returns `None` if requested batch has not been committed in
