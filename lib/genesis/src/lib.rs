@@ -12,7 +12,7 @@ use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::OnceCell;
-use zk_os_api::helpers::{set_properties_balance, set_properties_code, set_properties_nonce};
+use zk_os_api::helpers::{set_properties_code, set_properties_nonce};
 use zk_os_basic_system::system_implementation::flat_storage_model::{
     ACCOUNT_PROPERTIES_STORAGE_ADDRESS, AccountProperties,
 };
@@ -20,16 +20,6 @@ use zksync_os_contract_interface::IL1GenesisUpgrade::GenesisUpgrade;
 use zksync_os_contract_interface::ZkChain;
 use zksync_os_interface::types::BlockContext;
 use zksync_os_types::{ConfigFormat, L1UpgradeEnvelope, ProtocolSemanticVersion};
-
-/// Address of the BaseTokenHolder contract at 0x10011
-const L2_BASE_TOKEN_HOLDER_ADDR: Address = {
-    let mut bytes = [0u8; 20];
-    // 0x10011 = 0x00010011 in 4 bytes = bytes[17]=0x01, bytes[18]=0x00, bytes[19]=0x11
-    bytes[17] = 0x01;
-    bytes[18] = 0x00;
-    bytes[19] = 0x11;
-    Address::new(bytes)
-};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisInput {
@@ -226,20 +216,12 @@ async fn build_genesis(
     let mut storage_logs: BTreeMap<B256, B256> = BTreeMap::new();
     let mut preimages = vec![];
 
-    // INITIAL_BASE_TOKEN_HOLDER_BALANCE = 2^127 - 1
-    let initial_base_token_holder_balance = U256::from(1u128 << 127) - U256::from(1);
-
     for (address, deployed_code) in genesis_input.initial_contracts {
         let mut account_properties = AccountProperties::default();
         // When contracts are deployed, they have a nonce of 1.
         set_properties_nonce(&mut account_properties, 1);
         let bytecode_preimage = set_properties_code(&mut account_properties, &deployed_code);
         let bytecode_hash = account_properties.bytecode_hash;
-
-        // Set the initial balance for BaseTokenHolder
-        if address == L2_BASE_TOKEN_HOLDER_ADDR {
-            set_properties_balance(&mut account_properties, initial_base_token_holder_balance);
-        }
 
         let flat_storage_key = account_properties_flat_key(address);
 
