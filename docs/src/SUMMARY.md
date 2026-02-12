@@ -13,7 +13,6 @@
   - [Otterscan (Local Explorer)](setup/local_explorer.md)
   - [Exposed Ports](setup/exposed_ports.md)
   - [FAQ](setup/faq.md)
-  - [Base token price updater](setup/base_token_price_updater.md)
 
 ---
 
@@ -26,11 +25,10 @@
   - [State Model](design/state.md)
   - [Merkle Tree Structure](design/tree.md)
   - [Genesis Process](design/genesis.md)
+  - [Base token price updater](design/base_token_price_updater.md)
+  - [Fees](design/fees.md)
 
 ---
 
 - [Guides](guides/index.md)
-  - [Generate L1 State and Genesis](guides/generate_l1_state.md)
-  - [Run against Layer 1 (L1)](guides/running_with_l1.md)
-  - [Updating Contracts](guides/updating.md)
-
+  - [Updating local chains: genesis and L1 state](guides/local_setup_update.md)

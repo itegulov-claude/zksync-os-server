@@ -1,7 +1,8 @@
+use flate2::read::GzDecoder;
+use smart_config::{ConfigRepository, ConfigSources, Json, Yaml};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-
-use smart_config::{ConfigRepository, ConfigSources, Json, Yaml};
 use zksync_os_server::config::{Config, GenesisConfig};
 use zksync_os_types::ConfigFormat;
 
@@ -80,11 +81,6 @@ pub fn load_chain_config(layout: ChainLayout<'_>) -> Config {
     let mut config = load_config_from_path(&layout.config_path());
     config.genesis_config.genesis_input_path = Some(layout.genesis_input_path());
     config
-}
-
-/// Get L1 state path for either default or multi-chain layout.
-pub fn get_l1_state_path(layout: ChainLayout<'_>) -> String {
-    layout.l1_state_path().to_string_lossy().to_string()
 }
 
 /// Workspace directory path, taken from WORKSPACE_DIR environment variable.

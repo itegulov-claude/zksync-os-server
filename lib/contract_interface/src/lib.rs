@@ -37,10 +37,20 @@ alloy::sol! {
     }
 
     // `Messaging.sol`
+    #[derive(Debug)]
     struct InteropRoot {
         uint256 chainId;
         uint256 blockOrBatchNumber;
         bytes32[] sides;
+    }
+
+    interface ServerNotifier {
+        event MigrateToGateway(uint256 indexed chainId);
+        event MigrateFromGateway(uint256 indexed chainId);
+    }
+
+    interface ISystemContext {
+        function setSettlementLayerChainId(uint256 _newSettlementLayerChainId);
     }
 
     // `IMessageRoot.sol`
@@ -137,6 +147,8 @@ alloy::sol! {
     #[sol(rpc)]
     interface IChainTypeManager {
         address public validatorTimelockPostV29;
+
+        function serverNotifierAddress() external view returns (address);
 
         enum Action {
             Add,
@@ -749,6 +761,17 @@ impl<P: Provider> ZkChain<P> {
             .call()
             .await
             .enrich("baseTokenGasPriceMultiplierDenominator", None)
+    }
+
+    pub async fn get_server_notifier_address(&self) -> Result<Address> {
+        let chain_type_manager = self.get_chain_type_manager().await?;
+        let chain_type_manager_instance =
+            IChainTypeManager::new(chain_type_manager, self.provider());
+        chain_type_manager_instance
+            .serverNotifierAddress()
+            .call()
+            .await
+            .enrich("serverNotifierAddress", None)
     }
 }
 

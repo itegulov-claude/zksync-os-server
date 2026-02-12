@@ -373,6 +373,15 @@ pub struct SequencerConfig {
     #[config(default_t = None)]
     pub max_blocks_to_produce: Option<u64>,
 
+    /// Max number of interop roots to be included in a single transaction
+    #[config(default_t = 100)]
+    pub interop_roots_per_tx: usize,
+
+    /// Delay between 2 consecutive service blocks.
+    /// Defaults to 3 times of usual block time, to allow passing other transactions in between
+    #[config(default_t = Duration::from_millis(750))]
+    pub service_block_delay: Duration,
+
     /// Enable REVM consistency checker.
     /// If enabled, an additional pipeline process will be executed after the sequencer.
     /// The process re-executes transactions on the REVM client and checks state diff consistency.
@@ -493,7 +502,7 @@ pub struct L1SenderConfig {
     pub max_priority_fee_per_gas: EtherAmount,
 
     /// Max fee per blob gas we are willing to spend.
-    #[config(default_t = 1 * EtherUnit::Gwei)]
+    #[config(default_t = 2 * EtherUnit::Gwei)]
     pub max_fee_per_blob_gas: EtherAmount,
 
     /// Max number of commands (to commit/prove/execute one batch) to be processed at a time.
@@ -541,6 +550,10 @@ pub struct L1WatcherConfig {
     /// How often to poll L1 for new priority requests.
     #[config(default_t = 100 * TimeUnit::Millis)]
     pub poll_interval: Duration,
+
+    /// Whether to run gateway migration watcher.
+    #[config(default_t = false)]
+    pub enable_gw_migration_watcher: bool,
 }
 
 #[derive(Clone, Debug, DescribeConfig, DeserializeConfig)]
@@ -579,6 +592,10 @@ pub struct BatcherConfig {
     /// Max number of transactions per batch
     #[config(default_t = 10000)]
     pub tx_per_batch_limit: u64,
+
+    /// Max number of interop roots per batch
+    #[config(default_t = 1000)]
+    pub interop_roots_per_batch_limit: u64,
 
     /// Whether to verify that rebuilt batches match stored batches by comparing hashes.
     /// Enabled by default for safety. Disabling this check can be useful for debugging or
@@ -967,6 +984,7 @@ impl From<SequencerConfig> for zksync_os_sequencer::config::SequencerConfig {
             block_gas_limit: c.block_gas_limit,
             block_pubdata_limit_bytes: c.block_pubdata_limit_bytes,
             max_blocks_to_produce: c.max_blocks_to_produce,
+            interop_roots_per_tx: c.interop_roots_per_tx,
         }
     }
 }

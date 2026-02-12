@@ -28,4 +28,4 @@ For contract addresses, refer to `genesis` section of the [config.yaml](./config
 
 ## Versions
 
-For information about how this config was created, check [version.toml](../versions.toml) file.
+For information about how this config was created, check [versions.yaml](../versions.yaml) file.

@@ -38,4 +38,4 @@ for the corresponding chain.
 
 ## Versions
 
-For information about how this config was created, check [version.toml](../versions.toml) file.
+For information about how this config was created, check [versions.yaml](../versions.yaml) file.

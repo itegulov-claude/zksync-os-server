@@ -18,6 +18,14 @@ echo ""
 # Array to store PIDs of background processes
 declare -a PIDS=()
 
+TEMP_DIR=$(mktemp -d)
+
+# Check if tmp dir was created
+if [[ ! "$TEMP_DIR" || ! -d "$TEMP_DIR" ]]; then
+  echo "Could not create temporary directory via 'mkdir'"
+  exit 1
+fi
+
 # Cleanup function to stop all started services
 cleanup() {
     # Prevent re-entry when exit triggers the trap again
@@ -43,6 +51,7 @@ cleanup() {
     done
 
     echo -e "${GREEN}All services stopped${NC}"
+    rm -rf "$TEMP_DIR"
     exit 0
 }
 
@@ -98,10 +107,20 @@ if [ ! -d "$CONFIG_DIR" ]; then
     exit 1
 fi
 
+# Check for compressed L1 state file
+L1_STATE_FILE_GZ="$CONFIG_DIR/../l1-state.json.gz"
+if [ ! -f "$L1_STATE_FILE_GZ" ]; then
+    echo -e "${RED}Error: L1 state file '$L1_STATE_FILE_GZ' not found${NC}"
+    exit 1
+fi
+
+# Decompress L1 state file into temporary directory
+gzip -d < "$L1_STATE_FILE_GZ" > "$TEMP_DIR/l1-state.json"
+
 # Check for L1 state file
 L1_STATE_FILE="$CONFIG_DIR/../l1-state.json.gz"
 if [ ! -f "$L1_STATE_FILE" ]; then
-    echo -e "${RED}Error: L1 state file '$L1_STATE_FILE' not found${NC}"
+    echo -e "${RED}Error: decompressed L1 state file '$L1_STATE_FILE' not found${NC}"
     exit 1
 fi
 

@@ -17,6 +17,8 @@ mod state_initializer;
 pub mod tree_manager;
 pub mod zkstack_config;
 
+use zksync_os_mempool::InteropRootsTxPool;
+
 use crate::batch_sink::{BatchSink, NoOpSink, clear_failing_block_config_task};
 use crate::batcher::{Batcher, BatcherStartupConfig, util::load_genesis_stored_batch_info};
 use crate::command_source::{ExternalNodeCommandSource, MainNodeCommandSource};
@@ -68,7 +70,8 @@ use zksync_os_l1_sender::commands::prove::ProofCommand;
 use zksync_os_l1_sender::pipeline_component::L1Sender;
 use zksync_os_l1_sender::upgrade_gatekeeper::UpgradeGatekeeper;
 use zksync_os_l1_watcher::{
-    CommittedBatchProvider, L1CommitWatcher, L1ExecuteWatcher, L1TxWatcher, L1UpgradeTxWatcher,
+    CommittedBatchProvider, Gateway, GatewayMigrationWatcher, L1, L1CommitWatcher,
+    L1ExecuteWatcher, L1TxWatcher, L1UpgradeTxWatcher,
 };
 use zksync_os_l1_watcher::{InteropWatcher, L1PersistBatchWatcher};
 use zksync_os_mempool::L2TransactionPool;
@@ -176,10 +179,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
 
     // Channel between L1TxWatcher and Sequencer
     let (l1_transactions_sender, l1_transactions_for_sequencer) = tokio::sync::mpsc::channel(5);
-
-    // Channel between InteropWatcher and Sequencer
-    let (interop_transactions_sender, interop_transactions_receiver) =
-        tokio::sync::mpsc::channel(5);
 
     // Channel between L1UpgradeWatcher and Sequencer
     let (l1_upgrade_transactions_sender, l1_upgrade_transactions_receiver) =
@@ -348,7 +347,13 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         last_l1_executed_block,
     };
 
-    if let Some(block_rebuild) = &config.sequencer_config.block_rebuild {
+    if let Some(block_rebuild) = &config.sequencer_config.block_rebuild
+        && config.sequencer_config.is_main_node()
+    {
+        // The assertion is only relevant for the main node.
+        // External node can be started at any point and doesn't have to be in sync with L1.
+        // But the main node is expected to only produce blocks on top of committed L1 blocks,
+        // as those can't be re-sequenced.
         assert!(
             block_rebuild.from_block > node_startup_state.last_l1_committed_block,
             "rebuild_from_block must be > last_l1_committed_block, got {} <= {}",
@@ -456,13 +461,15 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         genesis.genesis_upgrade_tx().await.protocol_version
     };
 
+    let interop_roots_tx_pool = InteropRootsTxPool::new(10);
+
     // if current_protocol_version >= ProtocolSemanticVersion::new(0, 31, 0) {
     //     tasks.spawn(
     //         InteropWatcher::create_watcher(
-    //             node_startup_state.l1_state.bridgehub_l1.clone(), // todo
+    //             node_startup_state.l1_state.bridgehub.clone(),
     //             config.l1_watcher_config.clone().into(),
-    //             interop_transactions_sender,
     //             next_interop_event_index.clone(),
+    //             interop_roots_tx_pool.clone(),
     //         )
     //         .await
     //         .expect("failed to start L1 interop roots watcher")
@@ -470,6 +477,41 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     //         .map(report_exit("L1 interop roots watcher")),
     //     );
     // }
+
+    let (sl_chain_id_update_transactions_sender, sl_chain_id_update_transactions_receiver) =
+        tokio::sync::mpsc::channel(10);
+
+    if current_protocol_version >= ProtocolSemanticVersion::new(0, 31, 0)
+        && config.l1_watcher_config.enable_gw_migration_watcher
+    {
+        // todo: add proper handling of gateway migration watcher/differentiating between gateway and l1
+        let is_gateway = false;
+        if is_gateway {
+            tasks.spawn(
+                GatewayMigrationWatcher::<Gateway>::create_watcher(
+                    node_startup_state.l1_state.diamond_proxy_l1.clone(),
+                    config.l1_watcher_config.clone().into(),
+                    sl_chain_id_update_transactions_sender,
+                )
+                .await
+                .expect("failed to start L1 chain id update watcher")
+                .run()
+                .map(report_exit("L1 chain id update watcher")),
+            );
+        } else {
+            tasks.spawn(
+                GatewayMigrationWatcher::<L1>::create_watcher(
+                    node_startup_state.l1_state.diamond_proxy_l1.clone(),
+                    config.l1_watcher_config.clone().into(),
+                    sl_chain_id_update_transactions_sender,
+                )
+                .await
+                .expect("failed to start L1 chain id update watcher")
+                .run()
+                .map(report_exit("L1 chain id update watcher")),
+            );
+        }
+    }
 
     tasks.spawn(
         L1TxWatcher::create_watcher(
@@ -577,13 +619,19 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         next_interop_event_index,
         l1_transactions_for_sequencer,
         l1_upgrade_transactions_receiver,
-        interop_transactions_receiver,
+        sl_chain_id_update_transactions_receiver,
+        interop_roots_tx_pool,
         l2_mempool.clone(),
         block_hashes_for_next_block,
         previous_block_timestamp,
         chain_id,
         config.sequencer_config.block_gas_limit,
         config.sequencer_config.block_pubdata_limit_bytes,
+        // We set the value to the same as for the batch, since it should be enforced by batcher, but don't want to exceed it for the block
+        config.batcher_config.interop_roots_per_batch_limit,
+        // todo: change to config.sequencer_config.interop_roots_per_tx when contracts are updated
+        1,
+        config.sequencer_config.service_block_delay,
         current_protocol_version.clone(),
         config.sequencer_config.fee_collector_address,
         last_constructed_block_ctx_sender,

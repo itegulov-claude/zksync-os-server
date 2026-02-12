@@ -230,6 +230,7 @@ impl<ReadState: ReadStateHistory + Clone + Send + 'static> Batcher<ReadState> {
             self.batcher_config.blocks_per_batch_limit,
             self.batcher_config.tx_per_batch_limit,
             self.pubdata_limit_bytes,
+            self.batcher_config.interop_roots_per_batch_limit,
         );
 
         loop {

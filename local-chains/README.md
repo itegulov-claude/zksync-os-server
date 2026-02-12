@@ -15,6 +15,7 @@ local-chains/
 │   │   └── contracts.yaml       # Contracts configuration
 │   ├── multi_chain/             # Multi-chain scenario
 │   │   ├── README.md            # Scenario-specific documentation
+│   │   ├── genesis.json         # Genesis configuration (symlink to parent genesis)
 │   │   ├── chain_6565.yaml      # Configuration for chain with ID 6565
 │   │   ├── chain_6566.yaml      # Configuration for chain with ID 6566
 │   │   ├── wallets_6565.yaml    # Wallets for chain 6565
@@ -31,6 +32,7 @@ local-chains/
     │   └── wallets.yaml         # Wallets configuration
     ├── multi_chain/             # Multi-chain scenario
     │   ├── README.md            # Scenario-specific documentation
+    │   ├── genesis.json         # Genesis configuration (symlink to parent genesis)
     │   ├── chain_6565.yaml      # Configuration for chain with ID 6565
     │   ├── chain_6566.yaml      # Configuration for chain with ID 6566
     │   ├── wallets_6565.yaml    # Wallets for chain 6565
@@ -46,7 +48,7 @@ local-chains/
 
 ### `l1-state.json.gz`
 
-L1 state snapshot for Anvil. Contains the deployed L1 contracts state that can be loaded with:
+L1 state snapshot for Anvil. Contains the deployed L1 contracts state. It can be decompressed and then loaded with:
 
 ```bash
 anvil --load-state ./local-chains/v30.2/l1-state.json.gz --port 8545
@@ -105,9 +107,9 @@ The `run_local.sh` script automates starting Anvil and chain node(s):
 5. **Detects chain mode**:
    - If `config.json` exists → Starts single chain
    - Otherwise → Starts all `chain_*.json` files found (e.g., `chain_6565.json`, `chain_6566.json`)
-6. **Database cleanup prompt** (single chain mode only) - If the `db/` folder contains existing data, prompts whether to clean it up before starting
-7. **Monitors processes** - If any process fails, all services are stopped
-8. **Graceful shutdown** - Press `Ctrl+C` to stop all services
+7. **Database cleanup prompt** (single chain mode only) - If the `db/` folder contains existing data, prompts whether to clean it up before starting
+8. **Monitors processes** - If any process fails, all services are stopped
+9. **Graceful shutdown** - Press `Ctrl+C` to stop all services
 
 #### Script Output
 

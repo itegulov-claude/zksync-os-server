@@ -31,8 +31,9 @@ To run server locally with in-memory L1 node and dummy proofs, run the following
 # Start in-memory L1 node
 anvil --load-state ./local-chains/v30.2/l1-state.json.gz --port 8545
 # Launch zksync-os-server on the default port 3050
+# This also starts in-memory L1 node as a background process.
 # By default, fake (dummy) proofs are used both for FRI and SNARK proofs.
-cargo run --release --bin zksync-os-server
+./run_local.sh ./local-chains/v30.2/default
 
 # Use default rich account for testing
 RICH_ACCOUNT=0x36615Cf349d7F6344891B1e7CA7C72883F5dc049

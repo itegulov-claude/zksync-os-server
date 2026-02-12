@@ -10,6 +10,7 @@ use alloy::providers::{PendingTransactionBuilder, Provider};
 use alloy::rpc::types::TransactionReceipt;
 use zksync_os_contract_interface::Bridgehub;
 use zksync_os_rpc_api::types::ZkTransactionReceipt;
+use zksync_os_types::L2_INTEROP_ROOT_STORAGE_ADDRESS;
 
 alloy::sol!(
     /// Simple contract that can emit events on demand.
@@ -99,8 +100,6 @@ alloy::sol! {
 
 const L1_MESSENGER_ADDRESS: Address = address!("0000000000000000000000000000000000008008");
 const L2_BASE_TOKEN_ADDRESS: Address = address!("000000000000000000000000000000000000800a");
-const L2_INTEROP_ROOT_STORAGE_ADDRESS: Address =
-    address!("0x0000000000000000000000000000000000010008");
 
 pub struct L2BaseToken<P: Provider<Zksync>>(IBaseToken::IBaseTokenInstance<P, Zksync>);
 
