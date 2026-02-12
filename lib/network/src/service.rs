@@ -11,6 +11,7 @@ use reth_network::error::NetworkError;
 use reth_network::{NetworkConfig as RethNetworkConfig, NetworkManager};
 use reth_provider::BlockNumReader;
 use std::net::{SocketAddr, SocketAddrV4};
+use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
 use zksync_os_metadata::NODE_CLIENT_VERSION;
@@ -76,6 +77,11 @@ impl NetworkService {
                         rlpx_address.ip(),
                         config.port,
                     ))
+                    // Require only 2 peers to agree on our external IP to update our local ENR
+                    .enr_peer_update_min(2)
+                    // 2 peers from above must agree on external IP within 1h from each other.
+                    // This can make the node less responsive to dynamic IP changes.
+                    .vote_duration(Duration::from_secs(3600))
                     .build(),
                 ),
             )
