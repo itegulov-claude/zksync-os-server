@@ -17,7 +17,9 @@ pub fn execution_version_from_tag(tag: &str) -> String {
         "v0.2.7-interface-v0.0.13" => String::from("V5"),
         "v0.2.7-simulation-only-interface-v0.0.13" => String::from("V5_SIMULATION"),
         "dev-20260211-3" => String::from("V6"),
-        _ => panic!("Unsupported ZKsync OS execution version: {tag}"),
+        _ => panic!(
+            "Unknown ZKsync OS execution version: {tag}, please update the mapping in lib/multivm/build.rs"
+        ),
     }
 }
 
@@ -37,7 +39,7 @@ fn main() {
                 return;
             }
         };
-        
+
         let dir = format!("{manifest_dir}/apps/{tag}");
         std::fs::create_dir_all(&dir).expect("failed to create directory");
         for variant in [
