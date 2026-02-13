@@ -90,10 +90,14 @@ impl ProofStorage {
         Self { object_store }
     }
 
+    /// Warning: right now it does nothing
     /// Persist a BatchWithProof. Overwrites any existing entry for the same batch.
     /// Doesn't allow gaps - if a proof for batch `n` is missing, then no proof for batch `n+1` is allowed.
-    pub async fn save_batch_with_proof(&self, value: &StoredBatch) -> anyhow::Result<()> {
-        self.object_store.put(value.batch_number(), value).await?;
+    pub async fn save_batch_with_proof(&self, _value: &StoredBatch) -> anyhow::Result<()> {
+        // nothing is done here
+        // Since we're no longer using S3, we might run out of space
+        // This is a temporary solution to prevent S3 alerts
+        // TODO: proper way to store batches locally
         Ok(())
     }
 
