@@ -349,25 +349,6 @@ fn build_external_config(repo: ConfigRepository<'_>) -> Config {
         .parse()
         .expect("Failed to parse fee config");
 
-    // todo: is this relevant anymore?
-    // if let Some(config_dir) = general_config.zkstack_cli_config_dir.clone() {
-    //     // If set, then update the configs based off the values from the yaml files.
-    //     // This is a temporary measure until we update zkstack cli (or create a new tool) to create
-    //     // configs that are specific to the new sequencer.
-    //     let config = ZkStackConfig::new(config_dir.clone());
-    //     config
-    //         .update(
-    //             &mut general_config,
-    //             &mut sequencer_config,
-    //             &mut rpc_config,
-    //             &mut l1_sender_config,
-    //             &mut genesis_config,
-    //             &mut prover_api_config,
-    //             &mut observability_config,
-    //         )
-    //         .unwrap_or_else(|_| panic!("Failed to load zkstack config from `{config_dir}`: "));
-    // }
-
     // Validate that operator keys are different
     if l1_sender_config.operator_commit_sk == l1_sender_config.operator_prove_sk
         || l1_sender_config.operator_prove_sk == l1_sender_config.operator_execute_sk
