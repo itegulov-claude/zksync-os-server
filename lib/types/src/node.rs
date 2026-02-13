@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 /// A node's role in the network.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeRole {
+    #[serde(rename = "main")]
     MainNode,
+    #[serde(rename = "external")]
     ExternalNode,
 }
 

@@ -1,6 +1,6 @@
 # External node
 
-Setting the `general_node_role=ExternalNode` environment variable puts the node in external node mode, which means it
+Setting the `general_node_role=external` environment variable puts the node in external node mode, which means it
 receives block replays from another node instead of producing its own blocks. The node will get priority transactions
 from L1 and check that they match the ones in the replay but it won't change L1 state.
 
