@@ -8,7 +8,7 @@ use reth_discv5::discv5;
 use reth_eth_wire::HelloMessageWithProtocols;
 use reth_net_nat::NatResolver;
 use reth_network::error::NetworkError;
-use reth_network::{NetworkConfig as RethNetworkConfig, NetworkManager};
+use reth_network::{NetworkConfig as RethNetworkConfig, NetworkManager, PeersConfig};
 use reth_provider::BlockNumReader;
 use std::net::{SocketAddr, SocketAddrV4};
 use std::sync::{Arc, RwLock};
@@ -83,9 +83,13 @@ impl NetworkService {
                     // 2 peers from above must agree on external IP within 1h from each other.
                     // This can make the node less responsive to dynamic IP changes.
                     .vote_duration(Duration::from_secs(3600))
+                    // Effectively disables peer banning in discv5
+                    .ban_duration(Some(Duration::from_secs(1)))
                     .build(),
                 ),
             )
+            // Effectively disables peer banning in rlpx
+            .peer_config(PeersConfig::default().with_ban_duration(Duration::from_secs(1)))
             // Use the same port for RLPx (TCP) and for discv5 (UDP)
             .listener_addr(rlpx_address)
             .discovery_addr(rlpx_address)
