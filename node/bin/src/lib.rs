@@ -623,6 +623,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     );
 
     // ========== Start L1 Upgrade Watcher ===========
+    tracing::info!("Initializing L1 Upgrade Watcher");
 
     tasks.spawn(
         L1UpgradeTxWatcher::create_watcher(
@@ -639,6 +640,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     );
 
     // ========== Start L1 Persist Batch Watcher ===========
+    tracing::info!("Initializing L1 Persist Batch Watcher");
 
     let persistent_batch_storage =
         ExecutedBatchStorage::new(&config.general_config.rocks_db_path.join(BATCH_DB_NAME));
@@ -656,6 +658,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     );
 
     // ========== Start Sequencer ===========
+    tracing::info!("Initializing Sequencer");
     let repositories_clone = repositories.clone();
     tasks.spawn(async move {
         repositories_clone
@@ -725,6 +728,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         )
         .await;
     } else {
+        tracing::info!("Initializing EN");
         // External Node
         run_en_pipeline(
             &config,
@@ -747,6 +751,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
 
     // ======== Start Status Server ========
     if config.status_server_config.enabled {
+        tracing::info!("Initializing Status Server");
         tasks.spawn(
             run_status_server(
                 config.status_server_config.address.clone(),
@@ -758,6 +763,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
 
     // =========== Start JSON RPC ========
 
+    tracing::info!("Initializing JSON RPC");
     let rpc_storage = RpcStorage::new(
         repositories,
         block_replay_storage,
@@ -997,6 +1003,7 @@ async fn run_en_pipeline(
             .join(INTERNAL_CONFIG_FILE_NAME),
     );
 
+    tracing::info!("Initializing EN pipeline");
     Pipeline::new()
         .pipe(ExternalNodeCommandSource {
             up_to_block: config.sequencer_config.en_sync_up_to_block,
@@ -1042,6 +1049,7 @@ async fn run_en_pipeline(
 
     // Run Priority Tree tasks for EN - not part of the pipeline.
     if config.general_config.run_priority_tree {
+        tracing::info!("Initializing Priority Tree");
         let priority_tree_en_step = PriorityTreeENStep::new(
             block_replay_storage,
             Path::new(
@@ -1062,6 +1070,7 @@ async fn run_en_pipeline(
                 .map(report_exit("priority_tree_en")),
         );
     }
+    tracing::info!("Initializing Clear Failing Block Config");
     tasks.spawn(
         clear_failing_block_config_task(finality, internal_config_manager)
             .map(report_exit("clear_failing_block_config_task")),
