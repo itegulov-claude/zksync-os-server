@@ -62,8 +62,15 @@ impl<'a> ChainLayout<'a> {
         }
     }
 
-    fn l1_state_path(self) -> PathBuf {
-        self.protocol_dir().join("l1-state.json.gz")
+    pub(crate) fn l1_state(self) -> Vec<u8> {
+        let compressed_path = self.protocol_dir().join("l1-state.json.gz");
+        let data = std::fs::read(&compressed_path).expect("failed to read compressed L1 state");
+        let mut decoder = GzDecoder::new(data.as_slice());
+        let mut decoded_data = Vec::new();
+        decoder
+            .read_to_end(decoded_data.as_mut())
+            .expect("failed to decompress L1 state");
+        decoded_data
     }
 
     /// Genesis input is always taken from `<version>/default/genesis.json`

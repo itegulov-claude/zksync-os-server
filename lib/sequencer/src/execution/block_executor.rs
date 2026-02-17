@@ -16,9 +16,7 @@ use zksync_os_observability::ComponentStateHandle;
 use zksync_os_storage_api::{
     MeteredViewState, OverriddenStateView, ReadStateHistory, ReplayRecord, WriteState,
 };
-use zksync_os_types::{
-    ProtocolSemanticVersion, SystemTxType, ZkTransaction, ZkTxType, ZksyncOsEncode,
-};
+use zksync_os_types::{SystemTxType, ZkTransaction, ZkTxType, ZksyncOsEncode};
 // Note that this is a pure function without a container struct (e.g. `struct BlockExecutor`)
 // MAINTAIN this to ensure the function is completely stateless - explicit or implicit.
 
@@ -70,17 +68,6 @@ pub async fn execute_block<R: ReadStateHistory + WriteState>(
     // seal_reason must only be used for observability - handling must remain generic
     let seal_reason = loop {
         latency_tracker.enter_state(SequencerState::WaitingForTx);
-
-        // // FIXME: In v31 during ZK Gateway setup, we need to send lots of L1 transactions, which
-        // // leads to seal criteria being triggered for L1 transaction, leading to server panic
-        // // (server does not yet support safe exclusion of L1 transaction and requires a restart for it).
-        // // In v31 version, we will always require one tx per block.
-        // if command.protocol_version == ProtocolSemanticVersion::new(0, 31, 0)
-        //     && !executed_txs.is_empty()
-        // {
-        //     break SealReason::Timeout;
-        // }
-
         tokio::select! {
             /* -------- deadline branch ------------------------------ */
             _ = async {

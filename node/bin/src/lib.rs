@@ -474,20 +474,20 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
 
     let interop_roots_tx_pool = InteropRootsTxPool::new(10);
 
-    // if current_protocol_version >= ProtocolSemanticVersion::new(0, 31, 0) {
-    //     tasks.spawn(
-    //         InteropWatcher::create_watcher(
-    //             node_startup_state.l1_state.bridgehub.clone(),
-    //             config.l1_watcher_config.clone().into(),
-    //             next_interop_event_index.clone(),
-    //             interop_roots_tx_pool.clone(),
-    //         )
-    //         .await
-    //         .expect("failed to start L1 interop roots watcher")
-    //         .run()
-    //         .map(report_exit("L1 interop roots watcher")),
-    //     );
-    // }
+    if current_protocol_version >= ProtocolSemanticVersion::new(0, 31, 0) {
+        tasks.spawn(
+            InteropWatcher::create_watcher(
+                node_startup_state.l1_state.bridgehub.clone(),
+                config.l1_watcher_config.clone().into(),
+                next_interop_event_index.clone(),
+                interop_roots_tx_pool.clone(),
+            )
+            .await
+            .expect("failed to start L1 interop roots watcher")
+            .run()
+            .map(report_exit("L1 interop roots watcher")),
+        );
+    }
 
     let (sl_chain_id_update_transactions_sender, sl_chain_id_update_transactions_receiver) =
         tokio::sync::mpsc::channel(10);

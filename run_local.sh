@@ -118,7 +118,7 @@ fi
 gzip -d < "$L1_STATE_FILE_GZ" > "$TEMP_DIR/l1-state.json"
 
 # Check for L1 state file
-L1_STATE_FILE="$CONFIG_DIR/../l1-state.json.gz"
+L1_STATE_FILE="$TEMP_DIR/l1-state.json"
 if [ ! -f "$L1_STATE_FILE" ]; then
     echo -e "${RED}Error: decompressed L1 state file '$L1_STATE_FILE' not found${NC}"
     exit 1
