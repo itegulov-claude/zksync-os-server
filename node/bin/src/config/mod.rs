@@ -319,7 +319,7 @@ pub struct SequencerConfig {
 
     /// Max gas used per block.
     /// One of the block Seal Criteria. Only affects the Main Node.
-    #[config(default_t = 72057594037927935)]
+    #[config(default_t = 100_000_000)]
     pub block_gas_limit: u64,
 
     /// Max pubdata bytes per block.
