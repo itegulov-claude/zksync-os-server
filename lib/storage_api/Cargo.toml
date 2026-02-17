@@ -25,7 +25,6 @@ alloy = { workspace = true, default-features = false, features = ["eips", "rlp",
 alloy-rlp.workspace = true
 futures.workspace = true
 serde.workspace = true
-bincode.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
@@ -34,3 +33,6 @@ semver = { workspace = true, features = ["serde"] }
 anyhow.workspace = true
 pin-project.workspace = true
 auto_impl.workspace = true
+
+[features]
+test-utils = []

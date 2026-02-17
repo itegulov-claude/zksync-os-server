@@ -4,36 +4,15 @@ use reth_network::test_utils::Peer;
 use reth_network::{Peers, test_utils::Testnet};
 use reth_provider::test_utils::MockEthProvider;
 use reth_provider::{BlockReader, HeaderProvider};
-use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 use zksync_os_interface::types::BlockContext;
 use zksync_os_metadata::NODE_SEMVER_VERSION;
 use zksync_os_network::protocol::{ProtocolEvent, ProtocolState, ZksProtocolHandler};
 use zksync_os_network::version::{AnyZksProtocolVersion, ZksProtocolV0, ZksProtocolV1};
-use zksync_os_storage_api::{ReadReplay, ReplayRecord};
+use zksync_os_storage_api::ReplayRecord;
+use zksync_os_storage_api::test_utils::InMemReplay;
 use zksync_os_types::{InteropRootsLogIndex, NodeRole, ProtocolSemanticVersion};
-
-#[derive(Debug, Clone, Default)]
-struct InMemReplay(HashMap<BlockNumber, ReplayRecord>);
-
-impl ReadReplay for InMemReplay {
-    fn get_context(&self, block_number: BlockNumber) -> Option<BlockContext> {
-        self.0.get(&block_number).map(|r| r.block_context)
-    }
-
-    fn get_replay_record_by_key(
-        &self,
-        block_number: BlockNumber,
-        _db_key: Option<Vec<u8>>,
-    ) -> Option<ReplayRecord> {
-        self.0.get(&block_number).cloned()
-    }
-
-    fn latest_record(&self) -> BlockNumber {
-        self.0.keys().last().copied().unwrap_or_default()
-    }
-}
 
 fn dummy_record(block_number: BlockNumber) -> ReplayRecord {
     ReplayRecord::new(
@@ -84,7 +63,7 @@ where
         let (protocol_tx, protocol_rx) = mpsc::unbounded_channel();
         let (replay_tx, replay_rx) = mpsc::channel(8);
         let handler = ZksProtocolHandler::<P, _> {
-            replay: InMemReplay(HashMap::from_iter(replays)),
+            replay: InMemReplay::from_iter(replays),
             node_role,
             starting_block: Arc::new(RwLock::new(starting_block)),
             record_overrides: vec![],

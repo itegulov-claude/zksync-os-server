@@ -15248,7 +15248,6 @@ dependencies = [
  "reth-network",
  "reth-network-peers",
  "reth-provider",
- "secrecy",
  "semver 1.0.26",
  "test-log",
  "thiserror 2.0.17",
@@ -15256,7 +15255,6 @@ dependencies = [
  "tracing",
  "zksync_os_interface",
  "zksync_os_metadata",
- "zksync_os_reth_compat",
  "zksync_os_storage_api",
  "zksync_os_types",
 ]
@@ -15757,7 +15755,6 @@ dependencies = [
  "anyhow",
  "auto_impl",
  "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.5)",
- "bincode 2.0.1",
  "futures",
  "pin-project 1.1.10",
  "semver 1.0.26",

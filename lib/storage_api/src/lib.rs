@@ -25,3 +25,7 @@ pub use state::{ReadStateHistory, StateError, StateResult, ViewState, WriteState
 
 pub mod state_override_view;
 pub use state_override_view::OverriddenStateView;
+
+#[cfg(any(test, feature = "test-utils"))]
+/// Common test helpers for mocking storage.
+pub mod test_utils;
