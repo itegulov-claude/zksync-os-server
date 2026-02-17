@@ -35,7 +35,7 @@ use crate::prover_api::fri_job_manager::FriJobManager;
 use crate::prover_api::fri_proving_pipeline_step::FriProvingPipelineStep;
 use crate::prover_api::gapless_committer::GaplessCommitter;
 use crate::prover_api::gapless_l1_proof_sender::GaplessL1ProofSender;
-use crate::prover_api::proof_storage::ProofStorage;
+use crate::prover_api::proof_storage::{ProofStorage, ProofStorageConfig};
 use crate::prover_api::prover_server;
 use crate::prover_api::snark_job_manager::{FakeSnarkProver, SnarkJobManager};
 use crate::prover_api::snark_proving_pipeline_step::SnarkProvingPipelineStep;
@@ -810,14 +810,7 @@ async fn run_main_node_pipeline(
     committed_batch_provider: CommittedBatchProvider,
 ) {
     tracing::info!("Initializing ProofStorage");
-    // todo: this is used purely for prover API
-    //       decide what to do with it - might still be useful to debug failed proofs
-    let proof_storage = ProofStorage::new(
-        ObjectStoreFactory::new(config.prover_api_config.object_store.clone())
-            .create_store()
-            .await
-            .unwrap(),
-    );
+    let proof_storage = ProofStorage::new(config.prover_api_config.proof_storage.clone());
 
     let (fri_proving_step, fri_job_manager) = FriProvingPipelineStep::new(
         proof_storage.clone(),

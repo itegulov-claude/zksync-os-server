@@ -1,40 +1,86 @@
-//! RocksDB-backed persistence for Batch metadata, FRI proofs and failed FRI proofs.
-//! May be extracted to a separate service later on (aka FRI Cache)
-//! Currently used as a general batch storage:
-//!  * batch -> block mapping
-//!  * block -> batch mapping (temporary using bin-search)
-//!  * batch -> its FRI proof
-//!  * batch -> its commitment (used for l1 senders)
-//!  * batch -> failed FRI proof with batch metadata
-
 use crate::prover_api::fri_job_manager::FailedFriProof;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use smart_config::{DescribeConfig, DeserializeConfig};
+use std::cmp::Reverse;
+use std::path::PathBuf;
+use std::time::SystemTime;
+use tokio::fs;
 use zksync_os_l1_sender::batcher_model::{FriProof, SignedBatchEnvelope};
-use zksync_os_object_store::_reexports::BoxedError;
-use zksync_os_object_store::{Bucket, ObjectStore, ObjectStoreError, StoredObject};
+
+#[derive(Debug, Clone, DescribeConfig, DeserializeConfig)]
+pub struct ProofStorageConfig {
+    #[config(default_t = "./db/fri_proofs/".into())]
+    pub path: PathBuf,
+    //1GB by default
+    #[config(default_t = 1073741824)]
+    pub batch_capacity: u64,
+    #[config(default_t = 1073741824)]
+    pub failed_batch_capacity: u64,
+}
+
+impl Default for ProofStorageConfig {
+    fn default() -> Self {
+        Self {
+            path: "./db/fri_proofs/".into(),
+            batch_capacity: 1 << 30,
+            failed_batch_capacity: 1 << 30,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ProofStorage {
+    storage: BoundedFileStore,
+    failed_storage: BoundedFileStore,
+}
+impl ProofStorage {
+    pub fn new(config: ProofStorageConfig) -> Self {
+        Self {
+            storage: BoundedFileStore::new(config.path.join("fri_batches"), config.batch_capacity),
+            failed_storage: BoundedFileStore::new(
+                config.path.join("failed_proofs"),
+                config.failed_batch_capacity,
+            ),
+        }
+    }
+
+    /// Persist a BatchWithProof. Overwrites any existing entry for the same batch.
+    pub async fn save_batch_with_proof(&self, batch: &StoredBatch) -> anyhow::Result<()> {
+        let key = format!("batch_{}.json", batch.batch_number());
+        self.storage.store(&key, batch).await
+    }
+
+    /// Loads a BatchWithProof for `batch_number`, if present
+    pub async fn get_batch_with_proof(
+        &self,
+        batch_num: u64,
+    ) -> anyhow::Result<Option<SignedBatchEnvelope<FriProof>>> {
+        let key = format!("batch_{batch_num}.json");
+        match self.storage.load::<StoredBatch>(&key).await {
+            Ok(o) => Ok(o.map(|o| o.batch_envelope())),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Save a failed FRI proof with batch metadata for debugging.
+    pub async fn save_failed_proof(&self, proof: &FailedFriProof) -> anyhow::Result<()> {
+        let key = format!("failed_{}.json", proof.batch_number);
+        self.failed_storage.store(&key, proof).await
+    }
+
+    /// Get the failed proof for a given batch number.
+    /// Returns None if no failed proof exists for this batch.
+    pub async fn get_failed_proof(&self, batch_num: u64) -> anyhow::Result<Option<FailedFriProof>> {
+        let key = format!("failed_{batch_num}.json");
+        self.failed_storage.load(&key).await
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum StoredBatch {
     V1(SignedBatchEnvelope<FriProof>),
-}
-
-impl StoredObject for StoredBatch {
-    const BUCKET: Bucket = Bucket("fri_batch_envelopes");
-    type Key<'a> = u64;
-
-    fn encode_key(key: Self::Key<'_>) -> String {
-        format!("fri_batch_envelope_{key}.json")
-    }
-
-    fn serialize(&self) -> Result<Vec<u8>, BoxedError> {
-        serde_json::to_vec(self).map_err(From::from)
-    }
-
-    fn deserialize(bytes: Vec<u8>) -> Result<Self, BoxedError> {
-        serde_json::from_slice(&bytes).map_err(From::from)
-    }
 }
 
 impl StoredBatch {
@@ -51,86 +97,81 @@ impl StoredBatch {
     }
 }
 
-/// Failed FRI proof stored in object store for debugging
-#[derive(Debug, Serialize, Deserialize)]
-pub struct StoredFailedProof {
-    pub failed_proof: FailedFriProof,
-}
-
-impl StoredObject for StoredFailedProof {
-    const BUCKET: Bucket = Bucket("failed_fri_proofs");
-    type Key<'a> = u64;
-
-    fn encode_key(key: Self::Key<'_>) -> String {
-        format!("failed_fri_proof_{key}.json")
-    }
-
-    fn serialize(&self) -> Result<Vec<u8>, BoxedError> {
-        serde_json::to_vec(self).map_err(From::from)
-    }
-
-    fn deserialize(bytes: Vec<u8>) -> Result<Self, BoxedError> {
-        serde_json::from_slice(&bytes).map_err(From::from)
-    }
-}
-
-impl StoredFailedProof {
-    pub fn batch_number(&self) -> u64 {
-        self.failed_proof.batch_number
-    }
-}
-
+/// Storage for data blobs that
+/// automatically removes old files to keep disk usage within capacity_bytes
+/// TODO: Clone???
 #[derive(Clone, Debug)]
-pub struct ProofStorage {
-    object_store: Arc<dyn ObjectStore>,
+struct BoundedFileStore {
+    base_dir: PathBuf,
+    capacity_bytes: u64,
+    capacity_files: u64,
 }
 
-impl ProofStorage {
-    pub fn new(object_store: Arc<dyn ObjectStore>) -> Self {
-        Self { object_store }
-    }
-
-    /// Persist a BatchWithProof. Overwrites any existing entry for the same batch.
-    /// Doesn't allow gaps - if a proof for batch `n` is missing, then no proof for batch `n+1` is allowed.
-    pub async fn save_batch_with_proof(&self, value: &StoredBatch) -> anyhow::Result<()> {
-        self.object_store.put(value.batch_number(), value).await?;
-        Ok(())
-    }
-
-    /// Loads a BatchWithProof for `batch_number`, if present.
-    pub async fn get_batch_with_proof(
-        &self,
-        batch_number: u64,
-    ) -> anyhow::Result<Option<SignedBatchEnvelope<FriProof>>> {
-        match self.object_store.get::<StoredBatch>(batch_number).await {
-            Ok(o) => Ok(Some(o.batch_envelope())),
-            Err(ObjectStoreError::KeyNotFound(_)) => Ok(None),
-            Err(err) => Err(err.into()),
+impl BoundedFileStore {
+    fn new(base_dir: PathBuf, capacity_bytes: u64) -> Self {
+        Self {
+            base_dir,
+            capacity_bytes,
+            capacity_files: 1000,
         }
     }
 
-    /// Save a failed FRI proof with batch metadata for debugging.
-    pub async fn save_failed_proof(&self, failed_proof: &StoredFailedProof) -> anyhow::Result<()> {
-        self.object_store
-            .put(failed_proof.batch_number(), failed_proof)
-            .await?;
+    async fn store<T: Serialize>(&self, key: &str, value: &T) -> anyhow::Result<()> {
+        fs::create_dir_all(&self.base_dir).await?;
+
+        let file_path = self.base_dir.join(key);
+        let data = serde_json::to_vec(value).expect("Failed to serialize value");
+        self.enforce_capacity(data.len() as u64).await?;
+        tracing::info!("14811 Writing to {}", file_path.display());
+        fs::write(file_path, data).await?;
+
         Ok(())
     }
 
-    /// Get the failed proof for a given batch number.
-    /// Returns None if no failed proof exists for this batch.
-    pub async fn get_failed_proof(
-        &self,
-        batch_number: u64,
-    ) -> anyhow::Result<Option<FailedFriProof>> {
-        match self
-            .object_store
-            .get::<StoredFailedProof>(batch_number)
-            .await
-        {
-            Ok(o) => Ok(Some(o.failed_proof)),
-            Err(ObjectStoreError::KeyNotFound(_)) => Ok(None),
-            Err(err) => Err(err.into()),
+    async fn load<T: DeserializeOwned>(&self, key: &str) -> anyhow::Result<Option<T>> {
+        let path = self.base_dir.join(key);
+        if !path.exists() {
+            return Ok(None);
         }
+
+        let data = fs::read(path).await.expect("Failed to read file");
+        let decoded = serde_json::from_slice(&data).expect("Deserialization failed");
+        Ok(Some(decoded))
+    }
+
+    /// Delete old files to make space for the new file
+    async fn enforce_capacity(&self, new_file_size: u64) -> anyhow::Result<()> {
+        // List all files sorted by timestamp (descending)
+        let mut entries = fs::read_dir(&self.base_dir).await?;
+        let mut files = Vec::new();
+        while let Some(entry) = entries.next_entry().await? {
+            let meta = entry.metadata().await?;
+            if meta.is_file() {
+                files.push((entry.path(), meta));
+            }
+        }
+        files.sort_by_cached_key(|(_, meta)| {
+            Reverse(meta.modified().unwrap_or(SystemTime::UNIX_EPOCH))
+        });
+
+        //Delete old files to satisfy capacity constraints
+        let mut current_size = new_file_size;
+        let mut current_count = 1;
+        let files_to_delete = files.into_iter().skip_while(|(_, meta)| {
+            current_size += meta.len();
+            current_count += 1;
+            current_count <= self.capacity_files && current_size <= self.capacity_bytes
+        });
+        for (path, _) in files_to_delete {
+            fs::remove_file(path).await?;
+        }
+        Ok(())
     }
 }
+
+/*
+What to use as key??
+Limit the number of files???
+what should be pub?
+how to deal with threading?
+ */

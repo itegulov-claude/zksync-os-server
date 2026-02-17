@@ -16,6 +16,7 @@ use zksync_os_server::config::{
     StateBackendConfig, StatusServerConfig, TxValidatorConfig,
 };
 use zksync_os_server::default_protocol_version::{DEFAULT_ROCKS_DB_PATH, PROTOCOL_VERSION};
+use zksync_os_server::prover_api::proof_storage::ProofStorageConfig;
 use zksync_os_server::zkstack_config::ZkStackConfig;
 use zksync_os_server::{INTERNAL_CONFIG_FILE_NAME, run};
 use zksync_os_state::StateHandle;
@@ -418,10 +419,9 @@ fn enable_ephemeral_mode(config: &mut Config) -> Option<TempDir> {
     );
 
     // Update config to use temporary directory
+    //TODO: I'm not sure if these lines change anything
     config.general_config.rocks_db_path = tempdir_path.join("node");
-    config.prover_api_config.object_store.mode = ObjectStoreMode::FileBacked {
-        file_backed_base_path: tempdir_path.join("shared"),
-    };
+    config.prover_api_config.proof_storage = ProofStorageConfig::default();
 
     // Disable services that are not needed in ephemeral mode
     config.prover_api_config.enabled = false;

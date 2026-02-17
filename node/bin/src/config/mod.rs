@@ -1,5 +1,6 @@
 pub use self::cli::ConfigArgs;
 use self::util::SigningKeyDeserializer;
+use crate::prover_api::proof_storage::ProofStorageConfig;
 use crate::{command_source::RebuildOptions, default_protocol_version::DEFAULT_ROCKS_DB_PATH};
 use alloy::primitives::{Address, Bytes, U128};
 use alloy::signers::k256::ecdsa::SigningKey;
@@ -656,9 +657,8 @@ pub struct ProverApiConfig {
     #[config(default_t = 10)]
     pub max_fris_per_snark: usize,
 
-    /// Default: backed by files under `./db/shared` folder.
     #[config(nest, default)]
-    pub object_store: ObjectStoreConfig,
+    pub proof_storage: ProofStorageConfig,
 }
 
 #[derive(Clone, Debug, DescribeConfig, DeserializeConfig)]
