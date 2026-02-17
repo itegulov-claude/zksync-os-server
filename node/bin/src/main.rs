@@ -1,6 +1,5 @@
 use clap::{Parser, Subcommand};
 use smart_config::{ConfigRepository, ConfigSources, Environment, Json, Yaml};
-use std::process::Command;
 use std::{fs, future, path::Path, time::Duration};
 use tempfile::TempDir;
 use tokio::signal::unix::{SignalKind, signal};

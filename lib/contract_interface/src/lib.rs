@@ -303,15 +303,6 @@ alloy::sol! {
            bytes32[] itemHashes;
        }
 
-       struct L2Log {
-           uint8 l2ShardId;
-           bool isService;
-           uint16 txNumberInBatch;
-           address sender;
-           bytes32 key;
-           bytes32 value;
-       }
-
        function executeBatchesSharedBridge(
            address _chainAddress,
            uint256 _processFrom,
