@@ -119,7 +119,7 @@ impl<Finality: ReadFinality> BatchVerificationClient<Finality> {
 
         // Build HTTPS connector
         let https = HttpsConnectorBuilder::new()
-            .with_native_roots()?
+            .with_provider_and_native_roots(rustls::crypto::ring::default_provider())?
             .https_or_http() // Support both HTTPS and HTTP
             .enable_http2()
             .build();

@@ -14889,6 +14889,7 @@ dependencies = [
  "hyper",
  "hyper-rustls",
  "hyper-util",
+ "rustls",
  "secrecy",
  "serde",
  "structdiff",
