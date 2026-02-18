@@ -36,6 +36,12 @@ pub struct ProofStorage {
 }
 impl ProofStorage {
     pub fn new(config: ProofStorageConfig) -> Self {
+        tracing::info!(
+            path = config.path.to_str().unwrap(),
+            batch_capacity = config.batch_capacity,
+            failed_batch_capacity = config.failed_batch_capacity,
+            "Initializing proof storage"
+        );
         Self {
             storage: BoundedFileStore::new(config.path.join("fri_batches"), config.batch_capacity),
             failed_storage: BoundedFileStore::new(
@@ -108,11 +114,12 @@ struct BoundedFileStore {
 }
 
 impl BoundedFileStore {
+    const CAPACITY_FILES: u64 = 1000;
     fn new(base_dir: PathBuf, capacity_bytes: u64) -> Self {
         Self {
             base_dir,
             capacity_bytes,
-            capacity_files: 1000,
+            capacity_files: BoundedFileStore::CAPACITY_FILES,
         }
     }
 
@@ -122,9 +129,15 @@ impl BoundedFileStore {
         let file_path = self.base_dir.join(key);
         let data = serde_json::to_vec(value).expect("Failed to serialize value");
         self.enforce_capacity(data.len() as u64).await?;
-        tracing::info!("14811 Writing to {}", file_path.display());
-        fs::write(file_path, data).await?;
-
+        if (data.len() as u64) <= self.capacity_bytes {
+            fs::write(file_path, data).await?;
+        } else {
+            tracing::warn!(
+                data_len = data.len(),
+                capacity = self.capacity_bytes,
+                "Entry size is larger than the limit. Not saving.",
+            );
+        }
         Ok(())
     }
 
@@ -169,9 +182,70 @@ impl BoundedFileStore {
     }
 }
 
-/*
-What to use as key??
-Limit the number of files???
-what should be pub?
-how to deal with threading?
- */
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_bounded_storage_capacity() -> anyhow::Result<()> {
+        let dir = TempDir::new()?;
+        let path = dir.path().to_owned();
+        let storage = BoundedFileStore::new(path, 1 << 20);
+
+        //verify file capacity
+        let capacity_files = BoundedFileStore::CAPACITY_FILES;
+        for i in 0..2000 {
+            let str: String = i.to_string();
+            storage.store(&str, &str).await?;
+            assert_eq!(storage.load::<String>(str.as_str()).await?, Some(str));
+            if (i >= capacity_files) {
+                assert!(
+                    storage
+                        .load::<String>(&(i - capacity_files + 1).to_string())
+                        .await?
+                        .is_some()
+                );
+                assert!(
+                    storage
+                        .load::<String>(&(i - capacity_files).to_string())
+                        .await?
+                        .is_none()
+                );
+            }
+        }
+
+        //verify size capacity
+        let big_str = "a".repeat((1 << 20) - 500);
+        storage.store("key", &big_str).await?;
+        //This removes most entries but not all
+        assert!(storage.load::<String>(&1200.to_string()).await?.is_none());
+        assert!(storage.load::<String>(&1999.to_string()).await?.is_some());
+        //This should remove all the old entries
+        storage.store("key2", &big_str).await?;
+        assert!(storage.load::<String>("key").await?.is_none());
+        //Can't store huge files -
+        let very_big = "a".repeat(1 << 21);
+        storage.store("key", &very_big).await?;
+        assert!(storage.load::<String>("key").await?.is_none());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_bounded_storage_overwrites() -> anyhow::Result<()> {
+        const limit: u64 = 1 << 20;
+        let dir = TempDir::new()?;
+        let path = dir.path().to_owned();
+        let storage = BoundedFileStore::new(path, limit);
+        let big_str_a = "a".repeat((limit * 2 / 3) as usize);
+        storage.store("key", &big_str_a).await?;
+        assert_eq!(storage.load("key").await?, Some(big_str_a));
+        let big_str_b = "b".repeat((limit * 2 / 3) as usize);
+        storage.store("key", &big_str_b).await?;
+        assert_eq!(storage.load("key").await?, Some(big_str_b));
+
+        Ok(())
+    }
+}
