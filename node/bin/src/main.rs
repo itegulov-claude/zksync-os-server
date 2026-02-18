@@ -6,7 +6,6 @@ use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::watch;
 use zksync_os_internal_config::InternalConfigManager;
 use zksync_os_metadata::NODE_VERSION;
-use zksync_os_object_store::ObjectStoreMode;
 use zksync_os_observability::prometheus::PrometheusExporterConfig;
 use zksync_os_server::config::{
     BaseTokenPriceUpdaterConfig, BatchVerificationConfig, BatcherConfig, Config, ConfigArgs,
@@ -415,13 +414,15 @@ fn enable_ephemeral_mode(config: &mut Config) -> Option<TempDir> {
     let tempdir_path = tempdir.path();
     tracing::info!(
         path = %tempdir_path.display(),
-        "Ephemeral mode enabled. Using temporary directory for RocksDB and shared object store"
+        "Ephemeral mode enabled. Using temporary directory for RocksDB and proof storage"
     );
 
     // Update config to use temporary directory
-    //TODO: I'm not sure if these lines change anything
     config.general_config.rocks_db_path = tempdir_path.join("node");
-    config.prover_api_config.proof_storage = ProofStorageConfig::default();
+    config.prover_api_config.proof_storage = ProofStorageConfig {
+        path: tempdir_path.join("fri_proofs"),
+        ..ProofStorageConfig::default()
+    };
 
     // Disable services that are not needed in ephemeral mode
     config.prover_api_config.enabled = false;

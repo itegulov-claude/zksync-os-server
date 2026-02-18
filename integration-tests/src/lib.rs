@@ -16,13 +16,13 @@ use std::time::Duration;
 use tempfile::TempDir;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
-use zksync_os_object_store::{ObjectStoreConfig, ObjectStoreMode};
 use zksync_os_server::config::{
     BatchVerificationConfig, Config, FakeFriProversConfig, FakeSnarkProversConfig, FeeConfig,
     GeneralConfig, ProverApiConfig, ProverInputGeneratorConfig, RpcConfig, SequencerConfig,
     StatusServerConfig,
 };
 use zksync_os_server::default_protocol_version::{NEXT_PROTOCOL_VERSION, PROTOCOL_VERSION};
+use zksync_os_server::prover_api::proof_storage::ProofStorageConfig;
 use zksync_os_state_full_diffs::FullDiffsState;
 
 pub mod assert_traits;
@@ -166,11 +166,11 @@ impl Tester {
 
         let tempdir = tempfile::tempdir()?;
         let rocks_db_path = tempdir.path().join("rocksdb");
-        let object_store_path = main_node_tempdir
+        let proof_storage_path = main_node_tempdir
             .as_ref()
             .map(|t| t.path())
             .unwrap_or(tempdir.path())
-            .join("object_store");
+            .join("proof_storage_path");
         let (stop_sender, stop_receiver) = watch::channel(false);
 
         // Create a handle to run the sequencer in the background
@@ -200,12 +200,9 @@ impl Tester {
                 ..Default::default()
             },
             address: prover_api_address,
-            object_store: ObjectStoreConfig {
-                mode: ObjectStoreMode::FileBacked {
-                    file_backed_base_path: object_store_path.clone(),
-                },
-                max_retries: 1,
-                local_mirror_path: None,
+            proof_storage: ProofStorageConfig {
+                path: proof_storage_path.clone(),
+                ..Default::default()
             },
             ..Default::default()
         };
