@@ -111,7 +111,7 @@ impl BoundedFileStorage {
         fs::create_dir_all(&self.base_dir).await?;
 
         let file_path = self.base_dir.join(key);
-        let data = serde_json::to_vec(value).expect("Failed to serialize value");
+        let data = serde_json::to_vec(value)?;
         self.enforce_capacity(data.len() as u64).await?;
         if (data.len() as u64) <= self.capacity_bytes {
             fs::write(file_path, data).await?;
@@ -132,7 +132,7 @@ impl BoundedFileStorage {
         }
 
         let data = fs::read(path).await?;
-        let decoded = serde_json::from_slice(&data).expect("Deserialization failed");
+        let decoded = serde_json::from_slice(&data)?;
         Ok(Some(decoded))
     }
 
