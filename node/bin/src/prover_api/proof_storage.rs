@@ -1,3 +1,4 @@
+use crate::config::ProofStorageConfig;
 use crate::prover_api::fri_job_manager::FailedFriProof;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -7,27 +8,6 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 use tokio::fs;
 use zksync_os_l1_sender::batcher_model::{FriProof, SignedBatchEnvelope};
-
-#[derive(Debug, Clone, DescribeConfig, DeserializeConfig)]
-pub struct ProofStorageConfig {
-    #[config(default_t = "./db/fri_proofs/".into())]
-    pub path: PathBuf,
-    //1GB by default
-    #[config(default_t = 1073741824)]
-    pub batch_with_proof_capacity: u64,
-    #[config(default_t = 1073741824)]
-    pub failed_capacity: u64,
-}
-
-impl Default for ProofStorageConfig {
-    fn default() -> Self {
-        Self {
-            path: "./db/fri_proofs/".into(),
-            batch_with_proof_capacity: 1 << 30,
-            failed_capacity: 1 << 30,
-        }
-    }
-}
 
 ///Persists FRI proofs to disk together with the batch if proof is successful
 #[derive(Clone, Debug)]

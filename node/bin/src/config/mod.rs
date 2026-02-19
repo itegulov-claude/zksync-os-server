@@ -1,6 +1,5 @@
 pub use self::cli::ConfigArgs;
 use self::util::SigningKeyDeserializer;
-use crate::prover_api::proof_storage::ProofStorageConfig;
 use crate::{command_source::RebuildOptions, default_protocol_version::DEFAULT_ROCKS_DB_PATH};
 use alloy::primitives::{Address, Bytes, U128};
 use alloy::signers::k256::ecdsa::SigningKey;
@@ -699,6 +698,30 @@ pub struct FakeSnarkProversConfig {
     /// Only pick up jobs that are this time old.
     #[config(default_t = Duration::from_secs(10))]
     pub max_batch_age: Duration,
+}
+
+#[derive(Debug, Clone, DescribeConfig, DeserializeConfig)]
+pub struct ProofStorageConfig {
+    #[config(default_t = "./db/fri_proofs/".into())]
+    pub path: PathBuf,
+    /// The disk usage in bytes for batches with proofs,
+    /// old entries are removed to keep usage capped
+    #[config(default_t = 1073741824)]
+    pub batch_with_proof_capacity: u64,
+    /// The disk usage in bytes for failed proofs,
+    /// old entries are removed to keep usage capped
+    #[config(default_t = 1073741824)]
+    pub failed_capacity: u64,
+}
+
+impl Default for ProofStorageConfig {
+    fn default() -> Self {
+        Self {
+            path: "./db/fri_proofs/".into(),
+            batch_with_proof_capacity: 1 << 30,
+            failed_capacity: 1 << 30,
+        }
+    }
 }
 
 /// Set of options related to the observability stack,
