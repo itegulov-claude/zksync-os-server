@@ -104,8 +104,8 @@ pub enum JobMapMethod {
 pub enum ProofStorageMethod {
     SaveBatchWithProof,
     GetBatchWithProof,
-    SaveFailedProof,
-    GetFailedProof,
+    SaveFailed,
+    GetFailed,
 }
 #[derive(Metrics)]
 #[metrics(prefix = "proof_storage")]

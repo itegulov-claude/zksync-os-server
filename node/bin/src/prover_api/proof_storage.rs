@@ -84,12 +84,12 @@ impl ProofStorage {
 
     /// Save a failed FRI proof for debugging.
     pub async fn save_failed_proof(&self, proof: &FailedFriProof) -> anyhow::Result<()> {
-        let latency = PROOF_STORAGE_METRICS.latency[&ProofStorageMethod::SaveFailedProof].start();
+        let latency = PROOF_STORAGE_METRICS.latency[&ProofStorageMethod::SaveFailed].start();
 
         let key = format!("failed_{}.json", proof.batch_number);
         let usage = self.failed.lock().await.store(&key, proof).await?;
 
-        PROOF_STORAGE_METRICS.disk_usage[&ProofStorageMethod::SaveFailedProof].set(usage);
+        PROOF_STORAGE_METRICS.disk_usage[&ProofStorageMethod::SaveFailed].set(usage);
         latency.observe();
         Ok(())
     }
@@ -97,7 +97,7 @@ impl ProofStorage {
     /// Get the failed proof for a given batch number.
     /// Returns None if no failed proof exists for this batch.
     pub async fn get_failed_proof(&self, batch_num: u64) -> anyhow::Result<Option<FailedFriProof>> {
-        let latency = PROOF_STORAGE_METRICS.latency[&ProofStorageMethod::GetFailedProof].start();
+        let latency = PROOF_STORAGE_METRICS.latency[&ProofStorageMethod::GetFailed].start();
 
         let key = format!("failed_{batch_num}.json");
         let result = self.failed.lock().await.load(&key).await;
