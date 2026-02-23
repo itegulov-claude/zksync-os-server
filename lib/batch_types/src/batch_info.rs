@@ -159,22 +159,6 @@ impl BatchInfo {
     pub fn public_input_hash(&self, protocol_version: &ProtocolSemanticVersion) -> B256 {
         let commit_info = &self.commit_info;
         let upgrade_tx_hash = self.upgrade_tx_hash.unwrap_or(B256::ZERO);
-        tracing::info!(
-            batch_number = commit_info.batch_number,
-            protocol_minor = protocol_version.minor,
-            "PROVE batch hash metadata: chain_id={} first_block_timestamp={} last_block_timestamp={} da_commitment_scheme={} da_commitment={:?} number_of_layer1_txs={} number_of_layer2_txs={} priority_operations_hash={:?} l2_to_l1_logs_root_hash={:?} upgrade_tx_hash={:?} dependency_roots_rolling_hash={:?}",
-            commit_info.chain_id,
-            commit_info.first_block_timestamp,
-            commit_info.last_block_timestamp,
-            commit_info.l2_da_commitment_scheme as u8,
-            commit_info.da_commitment,
-            commit_info.number_of_layer1_txs,
-            commit_info.number_of_layer2_txs,
-            commit_info.priority_operations_hash,
-            commit_info.l2_to_l1_logs_root_hash,
-            upgrade_tx_hash,
-            commit_info.dependency_roots_rolling_hash,
-        );
         let result = match protocol_version.minor {
             // v30 and v31 use different packed layouts for batch output hash:
             // v31 inserts number_of_layer2_txs between L1 tx count and priority_operations_hash.
