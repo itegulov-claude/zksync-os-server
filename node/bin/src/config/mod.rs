@@ -568,7 +568,7 @@ pub struct BatcherConfig {
 pub struct ProverInputGeneratorConfig {
     /// Whether to enable debug output in RiscV binary.
     /// Also known as server_app.bin vs server_app_logging_enabled.bin
-    #[config(default_t = false)]
+    #[config(default_t = true)]
     pub logging_enabled: bool,
 
     /// How many blocks should be worked on at once.

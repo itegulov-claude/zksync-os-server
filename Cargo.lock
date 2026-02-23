@@ -2277,20 +2277,20 @@ checksum = "55248b47b0caf0546f7988906588779981c43bb1bc9d0c44087278f80cdb44ba"
 [[package]]
 name = "basic_bootloader"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
  "arrayvec 0.7.6",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "cfg-if",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "paste",
  "ruint",
  "serde-big-array",
  "strum_macros",
- "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
 ]
 
 [[package]]
@@ -2370,25 +2370,25 @@ dependencies = [
 [[package]]
 name = "basic_system"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
  "arrayvec 0.7.6",
  "cc-traits",
  "cfg-if",
  "const-hex",
  "const_for",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "either",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "modexp 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "modexp 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "paste",
  "ruint",
- "storage_models 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "storage_models 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "strum_macros",
- "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "zerocopy",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
 ]
 
 [[package]]
@@ -3131,19 +3131,19 @@ dependencies = [
 [[package]]
 name = "callable_oracles"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
  "alloy-consensus",
- "basic_bootloader 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "basic_bootloader 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "c-kzg",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "num-bigint 0.3.3",
  "num-traits",
- "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "risc_v_simulator 0.1.0 (git+https://github.com/matter-labs/zksync-airbender.git?tag=v0.5.2)",
  "ruint",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
 ]
 
 [[package]]
@@ -3278,7 +3278,7 @@ dependencies = [
 [[package]]
 name = "cc-traits"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 
 [[package]]
 name = "cesu8"
@@ -3881,7 +3881,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -4145,7 +4145,7 @@ dependencies = [
 [[package]]
 name = "cycle_marker"
 version = "0.0.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 
 [[package]]
 name = "cycle_marker"
@@ -4859,16 +4859,16 @@ dependencies = [
 [[package]]
 name = "evm_interpreter"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
  "arrayvec 0.7.6",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "either",
  "paste",
  "ruint",
  "strum_macros",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "zksync_os_evm_errors",
 ]
 
@@ -5245,27 +5245,27 @@ dependencies = [
 [[package]]
 name = "forward_system"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
  "alloy",
  "arrayvec 0.7.6",
- "basic_bootloader 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "basic_bootloader 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "bincode 1.3.3",
- "callable_oracles 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "callable_oracles 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "hex",
- "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "oracle_provider 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "paste",
  "ruint",
  "serde",
  "strum_macros",
- "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "zksync_os_evm_errors",
  "zksync_os_interface",
- "zksync_os_runner 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "zksync_os_runner 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
 ]
 
 [[package]]
@@ -7405,7 +7405,7 @@ dependencies = [
 [[package]]
 name = "modexp"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 
 [[package]]
 name = "modexp"
@@ -8066,10 +8066,10 @@ dependencies = [
 [[package]]
 name = "oracle_provider"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
  "risc_v_simulator 0.1.0 (git+https://github.com/matter-labs/zksync-airbender.git?tag=v0.5.2)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
 ]
 
 [[package]]
@@ -12157,10 +12157,10 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "storage_models"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
 ]
 
 [[package]]
@@ -12378,15 +12378,15 @@ dependencies = [
 [[package]]
 name = "system_hooks"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
  "arrayvec 0.7.6",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "paste",
  "ruint",
  "strum_macros",
- "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
 ]
 
 [[package]]
@@ -14564,13 +14564,13 @@ dependencies = [
 [[package]]
 name = "zk_ee"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
  "arrayvec 0.7.6",
  "bitflags 2.9.4",
  "cfg-if",
- "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "paste",
  "ruint",
  "strum_macros",
@@ -15236,7 +15236,7 @@ dependencies = [
  "alloy",
  "anyhow",
  "cargo_metadata",
- "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.0.27-interface-v0.0.13)",
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.1.1-interface-v0.0.13)",
  "forward_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.7-interface-v0.0.13)",
@@ -15501,9 +15501,9 @@ dependencies = [
 [[package]]
 name = "zksync_os_runner"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260219#d47e8664b3739f970d431b5a27e798399ba1f769"
+source = "git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder#7181181357959f93541437d72a2f3c4e4e6cbc6e"
 dependencies = [
- "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260219)",
+ "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260223-base-token-holder)",
  "execution_utils 0.1.0 (git+https://github.com/matter-labs/zksync-airbender.git?tag=v0.5.2)",
  "prover_examples 0.1.0 (git+https://github.com/matter-labs/zksync-airbender.git?tag=v0.5.2)",
  "risc_v_simulator 0.1.0 (git+https://github.com/matter-labs/zksync-airbender.git?tag=v0.5.2)",
