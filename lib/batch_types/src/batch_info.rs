@@ -195,7 +195,6 @@ impl BatchInfo {
             )),
             _ => panic!("Unsupported protocol version: {protocol_version}"),
         };
-        tracing::info!(batch_number = commit_info.batch_number, commitment = ?result, "PROVE batch hash result (StoredBatchInfo.commitment)");
         result
     }
 
