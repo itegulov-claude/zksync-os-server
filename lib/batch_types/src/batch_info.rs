@@ -192,6 +192,7 @@ impl BatchInfo {
                     commit_info.l2_to_l1_logs_root_hash,
                     upgrade_tx_hash,
                     commit_info.dependency_roots_rolling_hash,
+                    // TODO: add SL chain id
                 )
                     .abi_encode_packed(),
             )),
