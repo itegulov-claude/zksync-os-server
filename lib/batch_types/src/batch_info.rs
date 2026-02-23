@@ -43,6 +43,7 @@ impl BatchInfo {
     ) -> Self {
         let mut priority_operations_hash = keccak256([]);
         let mut number_of_layer1_txs = 0;
+        let mut number_of_layer2_txs = 0;
         let mut total_pubdata = vec![];
         let mut encoded_l2_l1_logs = vec![];
 
@@ -55,14 +56,18 @@ impl BatchInfo {
 
             for tx in transactions {
                 match tx.envelope() {
-                    ZkEnvelope::System(_) => {}
+                    ZkEnvelope::System(_) => {
+                        number_of_layer2_txs += 1;
+                    }
                     ZkEnvelope::L1(l1_tx) => {
                         let onchain_data_hash = l1_tx.hash();
                         priority_operations_hash =
                             keccak256([priority_operations_hash.0, onchain_data_hash.0].concat());
                         number_of_layer1_txs += 1;
                     }
-                    ZkEnvelope::L2(_) => {}
+                    ZkEnvelope::L2(_) => {
+                        number_of_layer2_txs += 1;
+                    }
                     ZkEnvelope::Upgrade(_) => {
                         assert!(
                             upgrade_tx_hash.is_none(),
@@ -130,6 +135,7 @@ impl BatchInfo {
             batch_number,
             new_state_commitment,
             number_of_layer1_txs,
+            number_of_layer2_txs,
             priority_operations_hash,
             dependency_roots_rolling_hash: B256::ZERO,
             l2_to_l1_logs_root_hash,
@@ -155,7 +161,7 @@ impl BatchInfo {
         let commit_info = &self.commit_info;
         match protocol_version.minor {
             // 31 needed for upgrade integration test
-            30..=31 => {
+            30 => {
                 use zk_ee::utils::Bytes32;
                 let system_batch_output =
                     zk_os_basic_system::system_implementation::system::BatchOutput {
@@ -180,6 +186,50 @@ impl BatchInfo {
                         ),
                     };
                 B256::from(system_batch_output.hash())
+            },
+            31 => {
+                use zk_ee_dev::utils::Bytes32;
+                let system_batch_output =
+                    zk_os_basic_bootloader_dev::bootloader::block_flow::zk::public_input::BatchOutput {
+                        chain_id: U256::from(commit_info.chain_id),
+                        first_block_timestamp: commit_info.first_block_timestamp,
+                        last_block_timestamp: commit_info.last_block_timestamp,
+                        da_commitment_scheme: (commit_info.l2_da_commitment_scheme as u8)
+                            .try_into()
+                            .expect("Failed to convert DA commitment scheme"),
+                        pubdata_commitment: Bytes32::from(commit_info.da_commitment.0),
+                        number_of_layer_1_txs: U256::from(commit_info.number_of_layer1_txs),
+                        number_of_layer_2_txs: U256::from(commit_info.number_of_layer2_txs),
+                        priority_operations_hash: Bytes32::from(
+                            commit_info.priority_operations_hash.0,
+                        ),
+                        l2_logs_tree_root: Bytes32::from(commit_info.l2_to_l1_logs_root_hash.0),
+                        upgrade_tx_hash: self
+                            .upgrade_tx_hash
+                            .map(|h| Bytes32::from_array(h.0))
+                            .unwrap_or(Bytes32::ZERO),
+                        interop_roots_rolling_hash: Bytes32::from(
+                            commit_info.dependency_roots_rolling_hash.0,
+                        ),
+                        settlement_layer_chain_id: U256::from(31337u32), // TODO
+                    };
+                let mut data = Vec::new();
+                data.extend(system_batch_output.chain_id.to_be_bytes::<32>());
+                data.extend(&system_batch_output.first_block_timestamp.to_be_bytes());
+                data.extend(&system_batch_output.last_block_timestamp.to_be_bytes());
+                // Encode DA commitment scheme as U256 BE
+                data.extend([0u8; 31]);
+                data.extend([system_batch_output.da_commitment_scheme as u8]);
+                data.extend(system_batch_output.pubdata_commitment.as_u8_ref());
+                data.extend(system_batch_output.number_of_layer_1_txs.to_be_bytes::<32>());
+                data.extend(system_batch_output.number_of_layer_2_txs.to_be_bytes::<32>());
+                data.extend(system_batch_output.priority_operations_hash.as_u8_ref());
+                data.extend(system_batch_output.l2_logs_tree_root.as_u8_ref());
+                data.extend(system_batch_output.upgrade_tx_hash.as_u8_ref());
+                data.extend(system_batch_output.interop_roots_rolling_hash.as_u8_ref());
+                // data.extend(system_batch_output.settlement_layer_chain_id.to_be_bytes::<32>());
+                // B256::from(system_batch_output.hash())
+                keccak256(data)
             }
             _ => panic!("Unsupported protocol version: {protocol_version}"),
         }

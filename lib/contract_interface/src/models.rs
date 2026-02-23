@@ -1,4 +1,4 @@
-use crate::{IExecutor, IExecutorV29};
+use crate::{IExecutor, IExecutorV29, IExecutorV30};
 use alloy::primitives::{B256, Bytes, U256, keccak256};
 use alloy::sol_types::SolValue;
 use serde::{Deserialize, Serialize};
@@ -147,6 +147,8 @@ pub struct CommitBatchInfo {
     pub batch_number: u64,
     pub new_state_commitment: B256,
     pub number_of_layer1_txs: u64,
+    #[serde(default)]
+    pub number_of_layer2_txs: u64,
     pub priority_operations_hash: B256,
     pub dependency_roots_rolling_hash: B256,
     pub l2_to_l1_logs_root_hash: B256,
@@ -172,6 +174,30 @@ fn default_l2_da_commitment_scheme() -> DACommitmentScheme {
 impl From<CommitBatchInfo> for IExecutor::CommitBatchInfoZKsyncOS {
     fn from(value: CommitBatchInfo) -> Self {
         IExecutor::CommitBatchInfoZKsyncOS::from((
+            value.batch_number,
+            value.new_state_commitment,
+            U256::from(value.number_of_layer1_txs),
+            U256::from(value.number_of_layer2_txs),
+            value.priority_operations_hash,
+            value.dependency_roots_rolling_hash,
+            value.l2_to_l1_logs_root_hash,
+            value.l2_da_commitment_scheme.into(),
+            value.da_commitment,
+            value.first_block_timestamp,
+            // It is expected that for all the newly sent batches this field is always present.
+            value.first_block_number.unwrap(),
+            value.last_block_timestamp,
+            // It is expected that for all the newly sent batches this field is always present.
+            value.last_block_number.unwrap(),
+            U256::from(value.chain_id),
+            Bytes::from(value.operator_da_input),
+        ))
+    }
+}
+
+impl From<CommitBatchInfo> for IExecutorV30::CommitBatchInfoZKsyncOS {
+    fn from(value: CommitBatchInfo) -> Self {
+        IExecutorV30::CommitBatchInfoZKsyncOS::from((
             value.batch_number,
             value.new_state_commitment,
             U256::from(value.number_of_layer1_txs),
@@ -218,6 +244,7 @@ impl From<IExecutor::CommitBatchInfoZKsyncOS> for CommitBatchInfo {
             batch_number: value.batchNumber,
             new_state_commitment: value.newStateCommitment,
             number_of_layer1_txs: value.numberOfLayer1Txs.to::<u64>(),
+            number_of_layer2_txs: value.numberOfLayer2Txs.to::<u64>(),
             priority_operations_hash: value.priorityOperationsHash,
             dependency_roots_rolling_hash: value.dependencyRootsRollingHash,
             l2_to_l1_logs_root_hash: value.l2LogsTreeRoot,

@@ -20,6 +20,9 @@ zksync_os_interface.workspace = true
 zk_os_basic_system.workspace = true
 zk_ee.workspace = true
 
+zk_os_basic_bootloader_dev.workspace = true
+zk_ee_dev.workspace = true
+
 alloy.workspace = true
 thiserror.workspace = true
 serde.workspace = true

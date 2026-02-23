@@ -2285,8 +2285,10 @@ dependencies = [
  "crypto 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260220)",
  "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260220)",
  "evm_interpreter 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260220)",
+ "hex",
  "paste",
  "ruint",
+ "serde",
  "serde-big-array",
  "strum_macros",
  "system_hooks 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260220)",
@@ -14573,6 +14575,7 @@ dependencies = [
  "cycle_marker 0.0.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260220)",
  "paste",
  "ruint",
+ "serde",
  "strum_macros",
  "zksync_os_evm_errors",
 ]
@@ -14881,11 +14884,13 @@ name = "zksync_os_batch_types"
 version = "0.15.1"
 dependencies = [
  "alloy",
+ "basic_bootloader 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260220)",
  "basic_system 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.7-interface-v0.0.13)",
  "blake2 0.10.6",
  "ruint",
  "serde",
  "thiserror 2.0.17",
+ "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=dev-20260220)",
  "zk_ee 0.1.0 (git+https://github.com/matter-labs/zksync-os?tag=v0.2.7-interface-v0.0.13)",
  "zksync_os_contract_interface",
  "zksync_os_interface",
