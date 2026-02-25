@@ -912,6 +912,7 @@ async fn run_main_node_pipeline(
             provider: sl_provider.clone(),
             config: config.l1_sender_config.clone().into(),
             to_address: node_state_on_startup.l1_state.validator_timelock_sl,
+            gateway: config.general_config.gateway_rpc_url.is_some(),
         })
         .pipe(snark_proving_step)
         .pipe(GaplessL1ProofSender::new(
@@ -921,6 +922,7 @@ async fn run_main_node_pipeline(
             provider: sl_provider.clone(),
             config: config.l1_sender_config.clone().into(),
             to_address: node_state_on_startup.l1_state.validator_timelock_sl,
+            gateway: config.general_config.gateway_rpc_url.is_some(),
         })
         .pipe(
             PriorityTreePipelineStep::new(
@@ -936,6 +938,7 @@ async fn run_main_node_pipeline(
             provider: sl_provider,
             config: config.l1_sender_config.clone().into(),
             to_address: node_state_on_startup.l1_state.validator_timelock_sl,
+            gateway: config.general_config.gateway_rpc_url.is_some(),
         })
         .pipe(BatchSink::new(internal_config_manager))
         .spawn(tasks);

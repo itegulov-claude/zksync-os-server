@@ -1,12 +1,12 @@
 use alloy::primitives::Address;
 use zksync_os_batch_types::BatchInfo;
-use zksync_os_contract_interface::models::StoredBatchInfo;
+use zksync_os_contract_interface::models::{L2Log, StoredBatchInfo};
 use zksync_os_interface::types::BlockOutput;
 use zksync_os_l1_sender::batcher_metrics::BatchExecutionStage;
 use zksync_os_l1_sender::batcher_model::{
     BatchEnvelope, BatchForSigning, BatchMetadata, ProverInput,
 };
-use zksync_os_storage_api::{read_aggregated_root, ReadStateHistory, ReplayRecord};
+use zksync_os_storage_api::{ReadStateHistory, ReplayRecord, read_aggregated_root};
 use zksync_os_types::{ProvingVersion, PubdataMode};
 
 /// Takes a vector of blocks and produces a batch envelope.
@@ -28,8 +28,7 @@ pub(crate) fn seal_batch<ReadState: ReadStateHistory>(
     let block_number_to = blocks.last().unwrap().1.block_context.block_number;
     let execution_version = blocks.first().unwrap().1.block_context.execution_version;
 
-    let state_view = read_state
-        .state_view_at(block_number_to)?;
+    let state_view = read_state.state_view_at(block_number_to)?;
     let aggregated_root = read_aggregated_root(state_view);
     let batch_info = BatchInfo::new(
         blocks
@@ -49,6 +48,58 @@ pub(crate) fn seal_batch<ReadState: ReadStateHistory>(
         pubdata_mode,
         aggregated_root,
     );
+
+    println!("{:?}", blocks[0].0);
+    let logs = blocks
+        .iter()
+        .map(|(block_output, _, _, _)| {
+            block_output
+                .tx_results
+                .iter()
+                .map(|tx_result| {
+                    if let Ok(output) = tx_result {
+                        output
+                            .l2_to_l1_logs
+                            .iter()
+                            .map(|log| L2Log {
+                                l2_shard_id: log.log.l2_shard_id,
+                                is_service: log.log.is_service,
+                                tx_number_in_batch: log.log.tx_number_in_block,
+                                sender: log.log.sender,
+                                key: log.log.key,
+                                value: log.log.value,
+                            })
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![]
+                    }
+                })
+                .flatten()
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+
+    let messages = blocks
+        .iter()
+        .map(|(block_output, _, _, _)| {
+            block_output
+                .tx_results
+                .iter()
+                .map(|tx_result| {
+                    if let Ok(output) = tx_result {
+                        output
+                            .l2_to_l1_logs
+                            .iter()
+                            .filter_map(|log| log.preimage.clone())
+                            .collect::<Vec<_>>()
+                    } else {
+                        vec![]
+                    }
+                })
+                .flatten()
+        })
+        .flatten()
+        .collect::<Vec<_>>();
 
     use zk_os_forward_system::run::generate_batch_proof_input;
 
@@ -117,6 +168,9 @@ pub(crate) fn seal_batch<ReadState: ReadStateHistory>(
                     .map(|(block_output, _, _, _)| block_output.computaional_native_used)
                     .sum(),
             ),
+            logs,
+            messages,
+            message_root: aggregated_root,
         },
         batch_prover_input,
     )

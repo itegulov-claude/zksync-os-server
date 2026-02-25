@@ -1,10 +1,11 @@
 use crate::batcher_metrics::BatchExecutionStage;
 use crate::batcher_model::{FriProof, SignedBatchEnvelope};
 use crate::commands::SendToL1;
-use alloy::primitives::{Bytes, FixedBytes, U256};
+use alloy::primitives::{B256, Bytes, U256};
 use alloy::sol_types::{SolCall, SolValue};
 use std::fmt::Display;
-use zksync_os_contract_interface::models::PriorityOpsBatchInfo;
+use zk_ee::memory::stack_trait::Stack;
+use zksync_os_contract_interface::models::{L2Log, PriorityOpsBatchInfo};
 use zksync_os_contract_interface::{IExecutor, InteropRoot};
 
 #[derive(Debug)]
@@ -33,12 +34,12 @@ impl SendToL1 for ExecuteCommand {
 
     const PASSTHROUGH_STAGE: BatchExecutionStage = BatchExecutionStage::ExecuteL1Passthrough;
 
-    fn solidity_call(&self) -> Bytes {
+    fn solidity_call(&self, gateway: bool) -> Bytes {
         IExecutor::executeBatchesSharedBridgeCall::new((
             self.batches.first().unwrap().batch.batch_info.chain_address,
             U256::from(self.batches.first().unwrap().batch_number()),
             U256::from(self.batches.last().unwrap().batch_number()),
-            self.to_calldata_suffix().into(),
+            self.to_calldata_suffix(gateway).into(),
         ))
         .abi_encode()
         .into()
@@ -76,7 +77,7 @@ impl Display for ExecuteCommand {
 }
 
 impl ExecuteCommand {
-    fn to_calldata_suffix(&self) -> Vec<u8> {
+    fn to_calldata_suffix(&self, gateway: bool) -> Vec<u8> {
         let stored_batch_infos = self
             .batches
             .iter()
@@ -95,6 +96,7 @@ impl ExecuteCommand {
             .cloned()
             .map(IExecutor::PriorityOpsBatchInfo::from)
             .collect::<Vec<_>>();
+        println!("priority ops: {:?}", self.priority_ops);
         // For now interop roots are empty.
         let interop_roots: Vec<Vec<InteropRoot>> = vec![vec![]; self.batches.len()];
 
@@ -102,21 +104,38 @@ impl ExecuteCommand {
         {
             29 | 30 => (stored_batch_infos, priority_ops, interop_roots).abi_encode_params(),
             31 | 32 => {
-                // For now, these are not validated, so they can be empty.
-                // IMPORTANT: the struct is not correct, it only works while the array is empty
-                let logs: Vec<u8> = Default::default();
-                let messages: Vec<Vec<u8>> = Default::default();
-                // todo: populate when settling on gateway like below
-                // let logs: Vec<IExecutor::L2Log> = vec![IExecutor::L2Log {
-                //     l2ShardId: 0,
-                //     isService: false,
-                //     txNumberInBatch: 0,
-                //     sender: Default::default(),
-                //     key: Default::default(),
-                //     value: Default::default(),
-                // }];
-                // let messages: Vec<Vec<u8>> = vec![vec![]];
-                let message_roots: Vec<FixedBytes<32>> = Default::default();
+                let logs = if gateway {
+                    self.batches
+                        .iter()
+                        .map(|batch| {
+                            batch
+                                .batch
+                                .logs
+                                .iter()
+                                .cloned()
+                                .map(IExecutor::L2Log::from)
+                                .collect::<Vec<_>>()
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+                let messages = if gateway {
+                    self.batches
+                        .iter()
+                        .map(|batch| batch.batch.messages.clone())
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+                let message_roots = if gateway {
+                    self.batches
+                        .iter()
+                        .map(|batch| batch.batch.message_root)
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
 
                 (
                     stored_batch_infos,
