@@ -1,7 +1,7 @@
 use crate::traits::ProcessRawEvents;
 use crate::watcher::{L1Watcher, L1WatcherError};
 use crate::{L1WatcherConfig, util};
-use alloy::primitives::{Address, B256};
+use alloy::primitives::Address;
 use alloy::providers::{DynProvider, Provider};
 use alloy::rpc::types::{Log, Topic, ValueOrArray};
 use alloy::sol_types::SolEvent;
