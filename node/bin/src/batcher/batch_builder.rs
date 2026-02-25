@@ -1,6 +1,6 @@
 use alloy::primitives::Address;
 use zksync_os_batch_types::BatchInfo;
-use zksync_os_contract_interface::models::StoredBatchInfo;
+use zksync_os_contract_interface::models::{L2Log, StoredBatchInfo};
 use zksync_os_interface::types::BlockOutput;
 use zksync_os_l1_sender::batcher_metrics::BatchExecutionStage;
 use zksync_os_l1_sender::batcher_model::{
@@ -8,6 +8,7 @@ use zksync_os_l1_sender::batcher_model::{
 };
 use zksync_os_storage_api::{ReadStateHistory, ReplayRecord, read_aggregated_root};
 use zksync_os_types::{ProvingVersion, PubdataMode};
+use zksync_os_types::ZkEnvelope::L2;
 
 /// Takes a vector of blocks and produces a batch envelope.
 pub(crate) fn seal_batch<ReadState: ReadStateHistory>(
@@ -30,7 +31,7 @@ pub(crate) fn seal_batch<ReadState: ReadStateHistory>(
     let protocol_version = blocks.first().unwrap().1.protocol_version.clone();
 
     let state_view = read_state.state_view_at(block_number_to)?;
-    let aggregated_root = read_aggregated_root(state_view);
+    let multichain_batch_root = read_aggregated_root(state_view);
     let batch_info = BatchInfo::new(
         blocks
             .iter()
@@ -47,9 +48,31 @@ pub(crate) fn seal_batch<ReadState: ReadStateHistory>(
         chain_address_sl,
         batch_number,
         pubdata_mode,
-        aggregated_root,
+        multichain_batch_root,
         &protocol_version,
     );
+
+    let mut logs = Vec::new();
+    let mut messages = Vec::new();
+    for block in blocks {
+        for tx_result in &block.0.tx_results {
+            if let Ok(output) = tx_result {
+                for l2_to_l1_log in &output.l2_to_l1_logs {
+                    logs.push(L2Log {
+                        l2_shard_id: l2_to_l1_log.log.l2_shard_id,
+                        is_service: l2_to_l1_log.log.is_service,
+                        tx_number_in_batch: l2_to_l1_log.log.tx_number_in_block,
+                        sender: l2_to_l1_log.log.sender,
+                        key: l2_to_l1_log.log.key,
+                        value: l2_to_l1_log.log.value,
+                    });
+                    if let Some(preimage) = l2_to_l1_log.preimage.as_ref() {
+                        messages.push(preimage.clone());
+                    }
+                }
+            }
+        }
+    }
 
     use zk_os_forward_system::run::generate_batch_proof_input;
 
@@ -112,6 +135,9 @@ pub(crate) fn seal_batch<ReadState: ReadStateHistory>(
                     .map(|(block_output, _, _, _)| block_output.computaional_native_used)
                     .sum(),
             ),
+            logs,
+            messages,
+            multichain_batch_root
         },
         batch_prover_input,
     )
