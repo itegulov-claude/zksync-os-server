@@ -214,21 +214,23 @@ impl<BatchStorage: WriteBatch, Finality: WriteFinality> ProcessRawEvents
             s if s == BlockExecution::SIGNATURE_HASH => {
                 let execute = BlockExecution::decode_log(&log.inner)?.data;
                 let batch_number = execute.batchNumber.to::<u64>();
-                let batch_hash = execute.batchHash;
-                if let Some(committed_batch) = self.committed_batches.remove(&batch_number) {
-                    tracing::debug!(
-                        batch_number,
-                        ?batch_hash,
-                        "discovered executed batch, persisting"
-                    );
-                    self.batch_storage.write(
-                        committed_batch,
-                        log.block_number.expect("Missing block number in log"),
-                    );
-                } else {
-                    return Err(L1WatcherError::Other(anyhow::anyhow!(
-                        "discovered executed batch #{batch_number} was not previously discovered as committed"
-                    )));
+                if batch_number > self.last_processed_commit_batch {
+                    let batch_hash = execute.batchHash;
+                    if let Some(committed_batch) = self.committed_batches.remove(&batch_number) {
+                        tracing::debug!(
+                            batch_number,
+                            ?batch_hash,
+                            "discovered executed batch, persisting"
+                        );
+                        self.batch_storage.write(
+                            committed_batch,
+                            log.block_number.expect("Missing block number in log"),
+                        );
+                    } else {
+                        return Err(L1WatcherError::Other(anyhow::anyhow!(
+                            "discovered executed batch #{batch_number} was not previously discovered as committed"
+                        )));
+                    }
                 }
             }
             _ => {
