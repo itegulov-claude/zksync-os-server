@@ -24,6 +24,7 @@ pub struct L1PersistBatchWatcher<BatchStorage, Finality> {
     finality: Finality,
     committed_batches: HashMap<u64, DiscoveredCommittedBatch>,
     last_processed_commit_batch: u64,
+    last_persisted_batch_on_start: u64,
 }
 
 impl<BatchStorage: WriteBatch, Finality: WriteFinality>
@@ -76,6 +77,7 @@ impl<BatchStorage: WriteBatch, Finality: WriteFinality>
             finality,
             committed_batches: HashMap::new(),
             last_processed_commit_batch: last_persisted_batch,
+            last_persisted_batch_on_start: last_persisted_batch,
         };
         let l1_watcher = L1Watcher::new(
             zk_chain.provider().clone(),
@@ -232,23 +234,25 @@ impl<BatchStorage: WriteBatch, Finality: WriteFinality> ProcessRawEvents
             s if s == BlockExecution::SIGNATURE_HASH => {
                 let execute = BlockExecution::decode_log(&log.inner)?.data;
                 let batch_number = execute.batchNumber.to::<u64>();
-                let batch_hash = execute.batchHash;
-                if let Some(committed_batch) = self.committed_batches.remove(&batch_number) {
-                    tracing::debug!(
-                        batch_number,
-                        ?batch_hash,
-                        "discovered executed batch, persisting"
-                    );
-                    self.batch_storage.write(PersistedBatch {
-                        committed_batch,
-                        execute_sl_block_number: Some(
-                            log.block_number.expect("Missing block number in log"),
-                        ),
-                    });
-                } else {
-                    return Err(L1WatcherError::Other(anyhow::anyhow!(
-                        "discovered executed batch #{batch_number} was not previously discovered as committed"
-                    )));
+                if batch_number > self.last_persisted_batch_on_start {
+                    let batch_hash = execute.batchHash;
+                    if let Some(committed_batch) = self.committed_batches.remove(&batch_number) {
+                        tracing::debug!(
+                            batch_number,
+                            ?batch_hash,
+                            "discovered executed batch, persisting"
+                        );
+                        self.batch_storage.write(PersistedBatch {
+                            committed_batch,
+                            execute_sl_block_number: Some(
+                                log.block_number.expect("Missing block number in log"),
+                            ),
+                        });
+                    } else {
+                        return Err(L1WatcherError::Other(anyhow::anyhow!(
+                            "discovered executed batch #{batch_number} was not previously discovered as committed"
+                        )));
+                    }
                 }
             }
             _ => {
