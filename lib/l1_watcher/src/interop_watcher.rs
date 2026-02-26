@@ -62,7 +62,7 @@ impl ProcessL1Event for InteropWatcher {
         &mut self,
         tx: AppendedChainRoot,
         log: Log,
-    ) -> Result<bool, L1WatcherError> {
+    ) -> Result<(), L1WatcherError> {
         let current_log_index = InteropRootsLogIndex {
             block_number: log.block_number.expect("Block number is required"),
             index_in_block: log.log_index.expect("Log index is required"),
@@ -74,7 +74,7 @@ impl ProcessL1Event for InteropWatcher {
                 starting_interop_event_index = ?self.starting_interop_event_index,
                 "skipping interop root event before starting index",
             );
-            return Ok(true);
+            return Ok(());
         }
 
         let interop_root = InteropRoot {
@@ -90,6 +90,6 @@ impl ProcessL1Event for InteropWatcher {
             })
             .await;
 
-        Ok(true)
+        Ok(())
     }
 }

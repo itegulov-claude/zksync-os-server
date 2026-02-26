@@ -204,7 +204,7 @@ impl<BatchStorage: WriteBatch, Finality: WriteFinality> ProcessRawEvents
         (*self.zk_chain.address()).into()
     }
 
-    async fn process_raw_event(&mut self, log: Log) -> Result<bool, L1WatcherError> {
+    async fn process_raw_event(&mut self, log: Log) -> Result<(), L1WatcherError> {
         let event_signature = log.topics()[0];
         match event_signature {
             s if s == ReportCommittedBatchRangeZKsyncOS::SIGNATURE_HASH => {
@@ -237,6 +237,6 @@ impl<BatchStorage: WriteBatch, Finality: WriteFinality> ProcessRawEvents
                 )));
             }
         }
-        Ok(true)
+        Ok(())
     }
 }

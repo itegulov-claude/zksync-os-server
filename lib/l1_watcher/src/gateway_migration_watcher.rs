@@ -79,10 +79,10 @@ impl<T: MigrationProcessor> ProcessL1Event for GatewayMigrationWatcher<T> {
         self.server_notifier_contract
     }
 
-    async fn process_event(&mut self, tx: T::Event, _log: Log) -> Result<bool, L1WatcherError> {
+    async fn process_event(&mut self, tx: T::Event, _log: Log) -> Result<(), L1WatcherError> {
         let envelope = SystemTxEnvelope::set_sl_chain_id(T::chain_id(tx));
 
         self.sl_chain_id_subpool.insert(envelope).await;
-        Ok(true)
+        Ok(())
     }
 }

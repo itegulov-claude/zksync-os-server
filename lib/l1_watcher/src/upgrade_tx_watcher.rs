@@ -283,14 +283,14 @@ impl ProcessL1Event for L1UpgradeTxWatcher {
         &mut self,
         request: L1UpgradeRequest,
         _log: Log,
-    ) -> Result<bool, L1WatcherError> {
+    ) -> Result<(), L1WatcherError> {
         if request.protocol_version <= self.current_protocol_version {
             tracing::info!(
                 ?request.protocol_version,
                 ?self.current_protocol_version,
                 "ignoring upgrade timestamp for older or equal protocol version"
             );
-            return Ok(true);
+            return Ok(());
         }
 
         // In localhost environment, we may want to test upgrades to non-live versions, but
@@ -333,7 +333,7 @@ impl ProcessL1Event for L1UpgradeTxWatcher {
         self.current_protocol_version = upgrade_info.protocol_version().clone();
         self.upgrade_subpool.insert(upgrade_info).await;
 
-        Ok(true)
+        Ok(())
     }
 }
 

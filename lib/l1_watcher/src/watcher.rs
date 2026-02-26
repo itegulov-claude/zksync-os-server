@@ -3,7 +3,6 @@ use crate::metrics::METRICS;
 use alloy::primitives::BlockNumber;
 use alloy::providers::{DynProvider, Provider};
 use alloy::rpc::types::{Filter, Log};
-use anyhow::Context;
 use std::time::Duration;
 
 /// An abstract watcher for L1 events.
@@ -58,25 +57,11 @@ impl L1Watcher {
             METRICS.events_loaded[&self.processor.name()].inc_by(events.len() as u64);
             METRICS.most_recently_scanned_l1_block[&self.processor.name()].set(to_block);
 
-            let mut first_unprocessed_event_block = None;
             for event in events {
-                let block_number = event.block_number;
-                let processed = self.processor.process_raw_event(event).await?;
-                if !processed {
-                    first_unprocessed_event_block = Some(
-                        block_number
-                            .context("missing block number in log")
-                            .map_err(L1WatcherError::Other)?,
-                    );
-                    break;
-                }
+                self.processor.process_raw_event(event).await?;
             }
 
-            self.next_l1_block = if let Some(block) = first_unprocessed_event_block {
-                block
-            } else {
-                to_block + 1
-            };
+            self.next_l1_block = to_block + 1;
         }
 
         Ok(())

@@ -76,7 +76,7 @@ impl<Finality: WriteFinality> ProcessL1Event for L1CommitWatcher<Finality> {
         &mut self,
         report: ReportCommittedBatchRangeZKsyncOS,
         log: Log,
-    ) -> Result<bool, L1WatcherError> {
+    ) -> Result<(), L1WatcherError> {
         let batch_number = report.batchNumber;
         if batch_number < self.next_batch_number {
             tracing::debug!(batch_number, "skipping already processed committed batch");
@@ -114,6 +114,6 @@ impl<Finality: WriteFinality> ProcessL1Event for L1CommitWatcher<Finality> {
             });
             self.committed_batch_provider.insert(committed_batch);
         }
-        Ok(true)
+        Ok(())
     }
 }

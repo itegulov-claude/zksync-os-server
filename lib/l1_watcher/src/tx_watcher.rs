@@ -5,6 +5,7 @@ use alloy::primitives::{Address, BlockNumber};
 use alloy::providers::DynProvider;
 use alloy::rpc::types::Log;
 use std::sync::Arc;
+use std::time::Duration;
 use zksync_os_contract_interface::IMailbox::NewPriorityRequest;
 use zksync_os_contract_interface::ZkChain;
 use zksync_os_mempool::subpools::l1::L1Subpool;
@@ -84,7 +85,7 @@ impl ProcessL1Event for L1TxWatcher {
         &mut self,
         tx: L1PriorityEnvelope,
         _log: Log,
-    ) -> Result<bool, L1WatcherError> {
+    ) -> Result<(), L1WatcherError> {
         if tx.priority_id() < self.next_l1_priority_id {
             tracing::debug!(
                 priority_id = tx.priority_id(),
@@ -92,36 +93,39 @@ impl ProcessL1Event for L1TxWatcher {
                 "skipping already processed priority transaction",
             );
 
-            Ok(true)
+            Ok(())
         } else {
-            let processable = if let Some(total_priority_ops) = self.cached_total_priority_ops_resp
+            if let Some(total_priority_ops) = self.cached_total_priority_ops_resp
                 && total_priority_ops > tx.priority_id()
             {
-                true
+                // tx is processed on SL, we can proceed with inserting it to subpool
             } else {
-                let total_priority_ops = self
-                    .zk_chain_sl
-                    .get_total_priority_txs_at_block(BlockId::Number(BlockNumberOrTag::Latest))
-                    .await?;
-                self.cached_total_priority_ops_resp = Some(total_priority_ops);
-                total_priority_ops > tx.priority_id()
+                tracing::debug!(
+                    priority_id = tx.priority_id(),
+                    hash = ?tx.hash(),
+                    "waiting for tx to be processed on SL"
+                );
+                let mut timer = tokio::time::interval(Duration::from_secs(10));
+                loop {
+                    timer.tick().await;
+                    let total_priority_ops = self
+                        .zk_chain_sl
+                        .get_total_priority_txs_at_block(BlockId::Number(BlockNumberOrTag::Latest))
+                        .await?;
+                    self.cached_total_priority_ops_resp = Some(total_priority_ops);
+                    if total_priority_ops > tx.priority_id() {
+                        break;
+                    }
+                }
             };
-            if processable {
-                self.next_l1_priority_id = tx.priority_id() + 1;
-                tracing::debug!(
-                    priority_id = tx.priority_id(),
-                    hash = ?tx.hash(),
-                    "sending new priority transaction for processing",
-                );
-                self.l1_subpool.insert(Arc::new(tx)).await;
-            } else {
-                tracing::debug!(
-                    priority_id = tx.priority_id(),
-                    hash = ?tx.hash(),
-                    "tx was not processed on SL yet"
-                );
-            }
-            Ok(processable)
+            self.next_l1_priority_id = tx.priority_id() + 1;
+            tracing::debug!(
+                priority_id = tx.priority_id(),
+                hash = ?tx.hash(),
+                "sending new priority transaction for processing",
+            );
+            self.l1_subpool.insert(Arc::new(tx)).await;
+            Ok(())
         }
     }
 }
