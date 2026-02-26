@@ -45,8 +45,8 @@ alloy::sol! {
     }
 
     interface ServerNotifier {
-        event MigrateToGateway(uint256 indexed chainId);
-        event MigrateFromGateway(uint256 indexed chainId);
+        event MigrateToGateway(uint256 indexed chainId, uint256 migrationNumber);
+        event MigrateFromGateway(uint256 indexed chainId, uint256 migrationNumber);
     }
 
     interface ISystemContext {
@@ -101,6 +101,7 @@ alloy::sol! {
         function sharedBridge() public view returns (address);
         function getAllZKChainChainIDs() external view returns (uint256[] memory);
         function messageRoot() external view returns (address);
+        function chainAssetHandler() external view returns (address);
 
         struct L2TransactionRequestDirect {
             uint256 chainId;
@@ -140,6 +141,11 @@ alloy::sol! {
             uint256 _l2GasLimit,
             uint256 _l2GasPerPubdataByteLimit
         ) external view returns (uint256);
+    }
+
+    #[sol(rpc)]
+    interface IChainAssetHandler {
+        function migrationNumber(uint256 _chainId) external view returns (uint256);
     }
 
     // `IChainTypeManager.sol`
@@ -519,6 +525,20 @@ impl<P: Provider + Clone> Bridgehub<P> {
 
     pub async fn get_all_zk_chain_chain_ids(&self) -> alloy::contract::Result<Vec<U256>> {
         self.instance.getAllZKChainChainIDs().call().await
+    }
+
+    pub async fn chain_asset_handler_address(&self) -> alloy::contract::Result<Address> {
+        self.instance.chainAssetHandler().call().await
+    }
+
+    pub async fn migration_number(&self, chain_id: u64) -> alloy::contract::Result<U256> {
+        let chain_asset_handler_address = self.chain_asset_handler_address().await?;
+        let chain_asset_handler =
+            IChainAssetHandler::new(chain_asset_handler_address, self.instance.provider());
+        chain_asset_handler
+            .migrationNumber(U256::from(chain_id))
+            .call()
+            .await
     }
 }
 

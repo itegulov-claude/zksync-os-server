@@ -51,6 +51,7 @@ fn dummy_record(block_number: BlockNumber) -> ReplayRecord {
         B256::random(),
         vec![],
         InteropRootsLogIndex::default(),
+        0,
     )
 }
 

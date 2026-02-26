@@ -421,6 +421,10 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             record.starting_interop_event_index.clone()
         });
 
+    let next_migration_number = first_replay_record
+        .as_ref()
+        .map_or(0, |record| record.starting_migration_number);
+
     let current_protocol_version = if let Some(record) = &first_replay_record {
         record.protocol_version.clone()
     } else {
@@ -472,6 +476,9 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             tasks.spawn(
                 GatewayMigrationWatcher::<Gateway>::create_watcher(
                     node_startup_state.l1_state.diamond_proxy.clone(),
+                    node_startup_state.l1_state.bridgehub.clone(),
+                    chain_id,
+                    next_migration_number,
                     config.l1_watcher_config.clone().into(),
                     sl_chain_id_subpool.clone(),
                 )
@@ -484,6 +491,9 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             tasks.spawn(
                 GatewayMigrationWatcher::<L1>::create_watcher(
                     node_startup_state.l1_state.diamond_proxy.clone(),
+                    node_startup_state.l1_state.bridgehub.clone(),
+                    chain_id,
+                    next_migration_number,
                     config.l1_watcher_config.clone().into(),
                     sl_chain_id_subpool.clone(),
                 )
@@ -606,6 +616,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     let block_context_provider = BlockContextProvider::new(
         next_l1_priority_id,
         next_interop_event_index,
+        next_migration_number,
         pool,
         block_hashes_for_next_block,
         previous_block_timestamp,
