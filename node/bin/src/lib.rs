@@ -511,7 +511,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             tasks.spawn(
                 GatewayMigrationWatcher::<Gateway>::create_watcher(
                     node_startup_state.l1_state.diamond_proxy_l1.clone(),
-                    node_startup_state.l1_state.bridgehub.clone(),
+                    node_startup_state.l1_state.bridgehub_sl.clone(),
                     chain_id,
                     next_migration_number,
                     config.l1_watcher_config.clone().into(),
@@ -526,7 +526,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             tasks.spawn(
                 GatewayMigrationWatcher::<L1>::create_watcher(
                     node_startup_state.l1_state.diamond_proxy_l1.clone(),
-                    node_startup_state.l1_state.bridgehub.clone(),
+                    node_startup_state.l1_state.bridgehub_sl.clone(),
                     chain_id,
                     next_migration_number,
                     config.l1_watcher_config.clone().into(),
