@@ -331,12 +331,13 @@ async fn get_storage_proof() -> anyhow::Result<()> {
 
     // Get L1 state which contains diamond proxy address
     let l1_state = L1State::fetch(
-        tester.l1.provider.clone().erased(),
+        tester.l1_provider().clone().erased(),
+        tester.l1_provider().clone().erased(),
         bridgehub_address,
         chain_id,
     )
     .await?;
-    let diamond_proxy_address = l1_state.diamond_proxy_address();
+    let diamond_proxy_address = l1_state.diamond_proxy_address_sl();
     tracing::info!(?diamond_proxy_address);
 
     let deploy_tx_receipt = Counter::deploy_builder(tester.l2_provider.clone())
