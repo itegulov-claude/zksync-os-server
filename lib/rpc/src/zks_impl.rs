@@ -124,9 +124,8 @@ impl<RpcStorage: ReadRpcStorage> ZksNamespace<RpcStorage> {
                 let gateway_batch: PersistedBatch = gateway_provider
                     .raw_request(
                         "unstable_getBatchByBlockNumber".into(),
-                        execute_sl_block_number,
-                    )
-                    .await
+                        (execute_sl_block_number,),
+                    ).await
                     .context("unstable_getBatchByBlockNumber")?;
                 let gateway_batch_number = gateway_batch.number();
 
@@ -139,7 +138,7 @@ impl<RpcStorage: ReadRpcStorage> ZksNamespace<RpcStorage> {
                 .map_err(|e| e.context("get_chain_log_proof"));
 
                 let gw_local_root_future = gateway_provider
-                    .raw_request("unstable_getLocalRoot".into(), gateway_batch_number)
+                    .raw_request("unstable_getLocalRoot".into(), (gateway_batch_number,))
                     .map_err(|e| anyhow::Error::from(e).context("unstable_getLocalRoot"));
 
                 let gw_chain_id_future = gateway_provider
