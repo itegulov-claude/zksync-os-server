@@ -154,7 +154,16 @@ impl BoundedFileStorage {
         while let Some(entry) = entries.next_entry().await? {
             let meta = entry.metadata().await?;
             if meta.is_file() {
-                files.push((entry.file_name().into_string().unwrap(), meta));
+                let filename = entry.file_name().into_string();
+                if let Ok(filename) = filename {
+                    files.push((filename, meta));
+                } else {
+                    tracing::warn!(
+                        base_dir,
+                        name = filename.err(),
+                        "Unrelated file detected, the name cannot be represented using a String"
+                    );
+                }
             }
         }
         files.sort_by_cached_key(|(_, meta)| meta.modified().unwrap_or(SystemTime::UNIX_EPOCH));
