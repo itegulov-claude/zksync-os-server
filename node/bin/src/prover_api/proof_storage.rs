@@ -132,6 +132,7 @@ impl StoredBatch {
 
 /// Storage for data blobs that
 /// automatically removes old files to keep disk usage within capacity_bytes
+/// Keys are expected to be file names.
 #[derive(Clone, Debug)]
 struct BoundedFileStorage {
     base_dir: PathBuf,
@@ -193,7 +194,7 @@ impl BoundedFileStorage {
         Ok(storage)
     }
 
-    /// Stores serialized value as a file named `key`
+    /// Stores serialized value as a file named `key` (should be a valid file name)
     /// Previous `value` for `key` is preserved under a different name, with a recent timestamp
     /// removes old files to enforce capacity constraints and
     /// returns disk usage
