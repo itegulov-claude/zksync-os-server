@@ -225,11 +225,11 @@ impl BoundedFileStorage {
         {
             let (path, meta) = self.erase_queue.pop_front().unwrap();
             let file = path.file_name().unwrap().to_str().unwrap();
-            if let Some(duplicates) = self.skip_cnt.get_mut(file) {
-                if *duplicates > 0 {
-                    *duplicates -= 1;
-                    continue;
-                }
+            if let Some(duplicates) = self.skip_cnt.get_mut(file)
+                && *duplicates > 0
+            {
+                *duplicates -= 1;
+                continue;
             }
             self.current_size -= meta.len();
             fs::remove_file(path).await?;
@@ -356,8 +356,8 @@ mod tests {
         let path = dir.path().to_owned();
         let mut storage = BoundedFileStorage::new(path, LIMIT).await?;
 
-        let str1 = String::from("a".repeat(100));
-        let str2 = String::from("ab".repeat(100));
+        let str1 = "a".repeat(100);
+        let str2 = "ab".repeat(100);
         storage.store("0", &str2).await?;
         storage.store("1", &str2).await?;
         storage.store("0", &str1).await?;
