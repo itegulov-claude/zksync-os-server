@@ -164,7 +164,7 @@ impl BoundedFileStorage {
             current_size += meta.len();
         }
 
-        let mut res = Self {
+        let mut storage = Self {
             base_dir,
             capacity_bytes,
             current_size,
@@ -178,13 +178,14 @@ impl BoundedFileStorage {
                 capacity_bytes,
                 "On startup, more data is used than expected"
             );
-            res.enforce_capacity(0).await?;
+            storage.enforce_capacity(0).await?;
         }
 
-        Ok(res)
+        Ok(storage)
     }
 
-    /// Stores serialized value as a file named `key`,
+    /// Stores serialized value as a file named `key`
+    /// Previous `value` for `key` is preserved under a different name, with a recent timestamp
     /// removes old files to enforce capacity constraints and
     /// returns disk usage
     async fn store<T: Serialize>(&mut self, key: &str, value: &T) -> anyhow::Result<u64> {

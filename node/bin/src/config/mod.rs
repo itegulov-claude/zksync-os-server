@@ -621,6 +621,7 @@ pub struct ProverApiConfig {
     #[config(default_t = 10)]
     pub max_fris_per_snark: usize,
 
+    /// Default: store files in ./db/fri_proofs/ with 1GiB disk usage cap
     #[config(nest, default)]
     pub proof_storage: ProofStorageConfig,
 }
