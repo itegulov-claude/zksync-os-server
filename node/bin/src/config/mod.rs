@@ -975,7 +975,9 @@ impl L1SenderConfig {
 }
 impl From<L1SenderConfig> for zksync_os_l1_sender::config::L1SenderConfig<CommitCommand> {
     fn from(c: L1SenderConfig) -> Self {
-        let sk = c.operator_commit_sk.clone()
+        let sk = c
+            .operator_commit_sk
+            .clone()
             .expect("operator_commit_sk must be set on the Main Node");
         c.into_lib_l1_sender_config(sk)
     }
@@ -983,14 +985,18 @@ impl From<L1SenderConfig> for zksync_os_l1_sender::config::L1SenderConfig<Commit
 
 impl From<L1SenderConfig> for zksync_os_l1_sender::config::L1SenderConfig<ProofCommand> {
     fn from(c: L1SenderConfig) -> Self {
-        let sk = c.operator_prove_sk.clone()
+        let sk = c
+            .operator_prove_sk
+            .clone()
             .expect("operator_prove_sk must be set on the Main Node");
         c.into_lib_l1_sender_config(sk)
     }
 }
 impl From<L1SenderConfig> for zksync_os_l1_sender::config::L1SenderConfig<ExecuteCommand> {
     fn from(c: L1SenderConfig) -> Self {
-        let sk = c.operator_execute_sk.clone()
+        let sk = c
+            .operator_execute_sk
+            .clone()
             .expect("operator_execute_sk must be set on the Main Node");
         c.into_lib_l1_sender_config(sk)
     }
