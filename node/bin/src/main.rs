@@ -354,11 +354,10 @@ fn build_external_config(repo: ConfigRepository<'_>) -> Config {
         &l1_sender_config.operator_commit_sk,
         &l1_sender_config.operator_prove_sk,
         &l1_sender_config.operator_execute_sk,
-    ) {
-        if commit_sk == prove_sk || prove_sk == execute_sk || execute_sk == commit_sk {
-            // important: don't replace this with `assert_ne` etc - it may expose private keys in logs
-            panic!("Operator addresses for commit, prove and execute must be different");
-        }
+    ) && (commit_sk == prove_sk || prove_sk == execute_sk || execute_sk == commit_sk)
+    {
+        // important: don't replace this with `assert_ne` etc - it may expose private keys in logs
+        panic!("Operator addresses for commit, prove and execute must be different");
     }
 
     Config {
