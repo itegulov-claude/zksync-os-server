@@ -10,8 +10,6 @@ use crate::batcher_model::{FriProof, SignedBatchEnvelope};
 use crate::commands::{L1SenderCommand, SendToL1};
 use crate::config::L1SenderConfig;
 use crate::metrics::{L1_SENDER_METRICS, L1SenderState};
-use alloy::consensus::{BlobTransactionValidationError, EnvKzgSettings};
-use alloy::eips::eip7594::BlobTransactionSidecarVariant;
 use alloy::eips::{BlockId, Encodable2718};
 use alloy::network::{Ethereum, EthereumWallet, TransactionBuilder, TransactionBuilder4844};
 use alloy::primitives::Address;
@@ -166,15 +164,11 @@ pub async fn run_l1_sender<Input: SendToL1>(
                     let tx = if config.fusaka_upgrade_timestamp <= pending_block.header.timestamp {
                         // Convert the envelope into an EIP-7594 transaction by converting the sidecar
                         envelope.try_map_eip4844(|tx| {
-                            tx.try_map_sidecar(|sidecar| {
-                                Ok::<_, BlobTransactionValidationError>(
-                                    BlobTransactionSidecarVariant::Eip7594(sidecar.try_into_7594(EnvKzgSettings::Default.get())?)
-                                )
-                            })
-                        })?
+                            tx.try_map_sidecar(|sidecar| sidecar.try_convert_into_eip7594())
+                        }).map_err(anyhow::Error::from)?
                     } else {
                         // Keep the regular EIP-4844 sidecar
-                        envelope.map_eip4844(|tx| tx.map_sidecar(BlobTransactionSidecarVariant::Eip4844))
+                        envelope
                     };
 
                     // We don't wait for receipt here, instead we register an alloy watcher that

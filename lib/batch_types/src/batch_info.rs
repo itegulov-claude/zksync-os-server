@@ -286,7 +286,7 @@ fn calculate_da_fields(
             (PubdataMode::Blobs, _) => {
                 // returns error in case of internal error during sidecar calculation
                 let blob_sidecar = SidecarBuilder::<SimpleCoder>::from_slice(pubdata)
-                    .build()
+                    .build_4844()
                     .unwrap();
                 let versioned_hashes: Vec<u8> = blob_sidecar
                     .versioned_hashes()
