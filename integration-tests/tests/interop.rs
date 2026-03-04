@@ -346,7 +346,7 @@ async fn test_interop_bundle_send() -> Result<()> {
     // This test validates the first part of the interop flow:
     // setting up two chains and sending an interop bundle from chain A to chain B
 
-    let multi_chain = MultiChainTester::setup(2).await?;
+    let multi_chain = MultiChainTester::setup(3).await?;
 
     let chain_a = multi_chain.chain_a();
     let chain_b = multi_chain.chain_b();
