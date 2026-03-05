@@ -46,6 +46,7 @@ pub const BATCH_VERIFICATION_KEYS: [&str; 2] = [
     "0x7094f4b57ed88624583f68d2f241858f7dafb6d2558bc22d18991690d36b4e47",
     "0xf9306dd03807c08b646d47c739bd51e4d2a25b02bad0efb3d93f095982ac98cd",
 ];
+const NODE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 /// Set of addresses (i.e. public keys) expected by batch verification. Derived from [`BATCH_VERIFICATION_KEYS`].
 static BATCH_VERIFICATION_ADDRESSES: LazyLock<Vec<String>> = LazyLock::new(|| {
     BATCH_VERIFICATION_KEYS
@@ -72,7 +73,7 @@ pub struct Tester {
     pub prover_tester: ProverTester,
 
     stop_sender: watch::Sender<bool>,
-    main_task: JoinHandle<()>,
+    main_task: Option<JoinHandle<()>>,
 
     #[allow(dead_code)]
     tempdir: Arc<tempfile::TempDir>,
@@ -104,6 +105,30 @@ impl Tester {
 
     pub fn l2_rpc_url(&self) -> &str {
         &self.l2_rpc_address
+    }
+
+    /// Gracefully stops the node task.
+    ///
+    /// Used by restart-oriented integration tests to ensure all components have
+    /// a chance to flush and release resources before launching another node.
+    pub async fn shutdown(&mut self) {
+        let _ = self.stop_sender.send(true);
+
+        let Some(mut main_task) = self.main_task.take() else {
+            return;
+        };
+
+        if tokio::time::timeout(NODE_SHUTDOWN_TIMEOUT, &mut main_task)
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                timeout = ?NODE_SHUTDOWN_TIMEOUT,
+                "Timed out waiting for test node to stop gracefully, aborting task"
+            );
+            main_task.abort();
+            let _ = main_task.await;
+        }
     }
 
     pub async fn launch_external_node(&self) -> anyhow::Result<Self> {
@@ -380,7 +405,7 @@ impl Tester {
             l2_wallet,
             prover_tester,
             stop_sender,
-            main_task,
+            main_task: Some(main_task),
             l2_rpc_address: l2_rpc_address.replace("0.0.0.0:", "http://localhost:"),
             batch_verification_url,
             node_record,
@@ -471,7 +496,9 @@ impl Drop for Tester {
         // Send stop signal to main node
         // Ignore error if receiver is already dropped (service already stopped)
         let _ = self.stop_sender.send(true);
-        self.main_task.abort();
+        if let Some(main_task) = self.main_task.take() {
+            main_task.abort();
+        }
     }
 }
 

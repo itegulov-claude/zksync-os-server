@@ -4,6 +4,7 @@ use std::{fs, future, path::Path, time::Duration};
 use tempfile::TempDir;
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::watch;
+use tokio::task::JoinSet;
 use zksync_os_internal_config::InternalConfigManager;
 use zksync_os_metadata::NODE_VERSION;
 use zksync_os_observability::prometheus::PrometheusExporterConfig;
@@ -175,56 +176,78 @@ pub async fn main() {
     let _ephemeral_guard = ephemeral_enabled.then(|| enable_ephemeral_mode(&mut config));
     let prometheus_port = config.observability_config.prometheus.port;
 
-    let main_task = async move {
+    let mut runtime_tasks: JoinSet<(&'static str, anyhow::Result<()>)> = JoinSet::new();
+    runtime_tasks.spawn(async move {
         match config.general_config.state_backend {
             StateBackendConfig::FullDiffs => run::<FullDiffsState>(main_stop.clone(), config).await,
             StateBackendConfig::Compacted => run::<StateHandle>(main_stop.clone(), config).await,
         }
-    };
+        ("main", Ok(()))
+    });
 
-    let prometheus_task = async {
-        if ephemeral_enabled {
+    let stop_for_prometheus = stop_receiver.clone();
+    runtime_tasks.spawn(async move {
+        let result = if ephemeral_enabled {
             tracing::info!("Ephemeral mode enabled, skipping Prometheus exporter");
-            // no-op for the ephemeral mode
-            future::pending::<anyhow::Result<()>>().await
+            let mut stop = stop_for_prometheus;
+            let _ = stop.wait_for(|stop| *stop).await;
+            Ok(())
         } else {
             let prometheus: PrometheusExporterConfig =
                 PrometheusExporterConfig::pull(prometheus_port);
-            prometheus.run(stop_receiver.clone()).await
-        }
-    };
-
-    let stop_receiver_copy = stop_receiver.clone();
+            prometheus.run(stop_for_prometheus).await
+        };
+        ("prometheus", result)
+    });
 
     tokio::select! {
-        _ = main_task => {
-            if *stop_receiver_copy.borrow() {
-                tracing::info!("Main task exited gracefully after stop signal");
-                // sleep to wait for other tasks to finish
-                tokio::time::sleep(GRACEFUL_SHUTDOWN_TIMEOUT).await;
-            } else {
-                tracing::warn!("Main task unexpectedly exited")
-            }
+        _ = wait_for_shutdown_signal() => {
+            let _ = stop_sender.send(true);
         },
-        _ = handle_delayed_termination(stop_sender) => {},
-        res = prometheus_task => {
-            match res {
-                Ok(_) => {
-                    if *stop_receiver_copy.borrow() {
-                        tracing::info!("Prometheus exporter exited gracefully after stop signal");
-                        // sleep to wait for other tasks to finish
-                        tokio::time::sleep(GRACEFUL_SHUTDOWN_TIMEOUT).await;
-                    } else {
-                        tracing::warn!("Prometheus exporter unexpectedly exited")
-                    }
-                },
-                Err(err) => tracing::error!(?err, "Prometheus exporter failed"),
+        Some(joined) = runtime_tasks.join_next() => {
+            match joined {
+                Ok((task_name, Ok(()))) => {
+                    tracing::warn!("{task_name} task unexpectedly exited, initiating shutdown");
+                }
+                Ok((task_name, Err(err))) => {
+                    tracing::error!(?err, "{task_name} task failed, initiating shutdown");
+                }
+                Err(err) => {
+                    tracing::error!(?err, "runtime task panicked, initiating shutdown");
+                }
             }
+            let _ = stop_sender.send(true);
         },
-    };
+    }
+
+    let shutdown_result = tokio::time::timeout(GRACEFUL_SHUTDOWN_TIMEOUT, async {
+        while let Some(joined) = runtime_tasks.join_next().await {
+            match joined {
+                Ok((task_name, Ok(()))) => {
+                    tracing::info!("{task_name} task exited during shutdown");
+                }
+                Ok((task_name, Err(err))) => {
+                    tracing::error!(?err, "{task_name} task failed during shutdown");
+                }
+                Err(err) => {
+                    tracing::error!(?err, "runtime task panicked during shutdown");
+                }
+            }
+        }
+    })
+    .await;
+
+    if shutdown_result.is_err() {
+        tracing::warn!(
+            timeout = ?GRACEFUL_SHUTDOWN_TIMEOUT,
+            "Timed out waiting for runtime tasks to stop; aborting remaining tasks"
+        );
+        runtime_tasks.abort_all();
+        while runtime_tasks.join_next().await.is_some() {}
+    }
 }
 
-async fn handle_delayed_termination(stop_sender: watch::Sender<bool>) {
+async fn wait_for_shutdown_signal() {
     // sigint is sent on Ctrl+C
     let mut sigint =
         signal(SignalKind::interrupt()).expect("failed to register interrupt signal handler");
@@ -234,16 +257,10 @@ async fn handle_delayed_termination(stop_sender: watch::Sender<bool>) {
         signal(SignalKind::terminate()).expect("failed to register terminate signal handler");
     tokio::select! {
         _ = sigint.recv() => {
-            tracing::info!("Received SIGINT, shutting down immediately");
+            tracing::info!("Received SIGINT, starting graceful shutdown");
         },
         _ = sigterm.recv() => {
-            tracing::info!("Received SIGTERM: scheduling shutdown in 10s");
-
-            stop_sender
-                .send(true)
-                .expect("failed to send terminate signal");
-
-            tokio::time::sleep(GRACEFUL_SHUTDOWN_TIMEOUT).await;
+            tracing::info!("Received SIGTERM, starting graceful shutdown");
         },
     }
 }

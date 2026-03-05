@@ -12,11 +12,13 @@ struct AppState {
 
 pub async fn run_status_server(
     bind_address: String,
-    stop_receiver: watch::Receiver<bool>,
+    mut stop_receiver: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/status/health", get(health))
-        .with_state(AppState { stop_receiver });
+        .with_state(AppState {
+            stop_receiver: stop_receiver.clone(),
+        });
 
     let addr: SocketAddr = bind_address.parse()?;
     let listener = TcpListener::bind(addr).await?;
@@ -24,7 +26,14 @@ pub async fn run_status_server(
     let addr = listener.local_addr()?;
     tracing::info!("running a status server" = %addr);
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async move {
+            if *stop_receiver.borrow() {
+                return;
+            }
+            let _ = stop_receiver.changed().await;
+        })
+        .await?;
 
     Ok(())
 }

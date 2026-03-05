@@ -74,6 +74,7 @@ pub async fn run_jsonrpsee_server<RpcStorage: ReadRpcStorage, Mempool: L2Subpool
     last_constructed_block_context: watch::Receiver<Option<BlockContext>>,
     tx_forwarder: Option<DynProvider>,
     gateway_provider: Option<DynProvider>,
+    mut stop_receiver: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
     tracing::info!("Starting JSON-RPC server at {}", config.address);
 
@@ -152,6 +153,22 @@ pub async fn run_jsonrpsee_server<RpcStorage: ReadRpcStorage, Mempool: L2Subpool
 
     let server_handle = server.start(rpc);
 
-    server_handle.stopped().await;
+    if *stop_receiver.borrow() {
+        tracing::info!("Stop signal already set, stopping JSON-RPC server");
+        server_handle.stop()?;
+        server_handle.stopped().await;
+        return Ok(());
+    }
+
+    tokio::select! {
+        _ = server_handle.clone().stopped() => {}
+        changed = stop_receiver.changed() => {
+            if changed.is_ok() && *stop_receiver.borrow() {
+                tracing::info!("Stop signal received, stopping JSON-RPC server");
+                server_handle.stop()?;
+                server_handle.stopped().await;
+            }
+        }
+    }
     Ok(())
 }

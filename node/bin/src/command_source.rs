@@ -16,6 +16,7 @@ pub struct MainNodeCommandSource<Replay> {
     pub rebuild_options: Option<RebuildOptions>,
     pub block_time: Duration,
     pub max_transactions_in_block: usize,
+    pub stop_receiver: watch::Receiver<bool>,
 }
 
 #[derive(Debug)]
@@ -41,7 +42,7 @@ impl<Replay: ReadReplay> PipelineComponent for MainNodeCommandSource<Replay> {
     const OUTPUT_BUFFER_SIZE: usize = 5;
 
     async fn run(
-        self,
+        mut self,
         _input: PeekableReceiver<()>,
         output: mpsc::Sender<BlockCommand>,
     ) -> anyhow::Result<()> {
@@ -54,11 +55,30 @@ impl<Replay: ReadReplay> PipelineComponent for MainNodeCommandSource<Replay> {
             self.rebuild_options,
         );
 
-        while let Some(command) = stream.next().await {
-            tracing::debug!(?command, "Sending block command");
-            if output.send(command).await.is_err() {
-                tracing::warn!("Command output channel closed, stopping source");
+        loop {
+            if *self.stop_receiver.borrow() {
+                tracing::info!("Received stop signal, stopping main node command source");
                 break;
+            }
+
+            tokio::select! {
+                changed = self.stop_receiver.changed() => {
+                    if changed.is_err() || *self.stop_receiver.borrow() {
+                        tracing::info!("Received stop signal, stopping main node command source");
+                        break;
+                    }
+                }
+                maybe_command = stream.next() => {
+                    let Some(command) = maybe_command else {
+                        break;
+                    };
+
+                    tracing::debug!(?command, "Sending block command");
+                    if output.send(command).await.is_err() {
+                        tracing::warn!("Command output channel closed, stopping source");
+                        break;
+                    }
+                }
             }
         }
 

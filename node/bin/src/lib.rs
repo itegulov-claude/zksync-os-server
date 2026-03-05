@@ -50,7 +50,7 @@ use jsonrpsee::http_client::HttpClient;
 use ruint::aliases::U256;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
 use tokio::task::JoinSet;
 use zksync_os_base_token_adjuster::BaseTokenPriceUpdater;
@@ -107,6 +107,7 @@ const PRIORITY_TREE_DB_NAME: &str = "priority_txs_tree";
 const REPOSITORY_DB_NAME: &str = "repository";
 const BATCH_DB_NAME: &str = "batch";
 pub const INTERNAL_CONFIG_FILE_NAME: &str = "internal_config.json";
+const COMPONENT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone>(
@@ -818,14 +819,49 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             last_constructed_block_ctx_receiver,
             main_node_provider,
             gateway_provider.map(|p| p.erased()),
+            stop_receiver.clone(),
         )
         .map(report_exit("JSON-RPC server")),
     );
     let startup_time = process_started_at.elapsed();
     GENERAL_METRICS.startup_time[&"total"].set(startup_time.as_secs_f64());
     tracing::info!("All components initialized in {startup_time:?}");
-    tasks.join_next().await;
-    tracing::info!("One of the subsystems exited - exiting process.");
+
+    let mut stop_receiver = stop_receiver;
+    let stop_or_failure = tokio::select! {
+        _ = stop_receiver.wait_for(|stop| *stop) => {
+            tracing::info!("Stop signal received, waiting for components to shut down");
+            Ok::<(), ()>(())
+        }
+        joined = tasks.join_next() => {
+            if let Some(Err(err)) = joined {
+                tracing::error!(?err, "A subsystem panicked");
+            }
+            tracing::warn!("One of the subsystems exited - shutting down remaining components");
+            Err(())
+        }
+    };
+
+    if stop_or_failure.is_err() {
+        tasks.abort_all();
+        while tasks.join_next().await.is_some() {}
+        return;
+    }
+
+    let graceful_shutdown = async { while tasks.join_next().await.is_some() {} };
+    if tokio::time::timeout(COMPONENT_SHUTDOWN_TIMEOUT, graceful_shutdown)
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            timeout = ?COMPONENT_SHUTDOWN_TIMEOUT,
+            "Timed out waiting for component shutdown; aborting remaining tasks"
+        );
+        tasks.abort_all();
+        while tasks.join_next().await.is_some() {}
+    }
+
+    tracing::info!("All components stopped");
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -845,7 +881,7 @@ async fn run_main_node_pipeline(
     tree: MerkleTree<RocksDBWrapper>,
     finality: impl ReadFinality + Clone,
     chain_id: u64,
-    _stop_receiver: watch::Receiver<bool>,
+    stop_receiver: watch::Receiver<bool>,
     tx_acceptance_state_sender: watch::Sender<TransactionAcceptanceState>,
     sidecar_sender: tokio::sync::mpsc::Sender<BlobTransactionSidecar>,
     committed_batch_provider: CommittedBatchProvider,
@@ -906,6 +942,7 @@ async fn run_main_node_pipeline(
             starting_block,
             block_time: config.sequencer_config.block_time,
             max_transactions_in_block: config.sequencer_config.max_transactions_in_block,
+            stop_receiver,
             rebuild_options: config
                 .sequencer_config
                 .block_rebuild
