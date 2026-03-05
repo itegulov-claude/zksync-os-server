@@ -1,9 +1,12 @@
 name: Eth spec tests
 
-# Run tests every day or by manual request
+# Run tests every 6 hours or on push to main or by manual request
 on:
   schedule:
-    - cron: '0 */3 * * *' # every 3 hours
+    - cron: '0 */6 * * *' # every 6 hours
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 # Set default permissions
