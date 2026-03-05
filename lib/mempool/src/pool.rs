@@ -4,19 +4,18 @@ use crate::subpools::l2::{L2Subpool, L2TransactionsStreamMarker};
 use crate::subpools::sl_chain_id::SlChainIdSubpool;
 use crate::subpools::upgrade::{UpgradeSubpool, UpgradeTransactionsStream};
 use alloy::consensus::{Header, Sealed};
-use reth_primitives::{Block, BlockBody};
 use alloy::primitives::TxHash;
 use futures::stream::{BoxStream, PollNext};
 use futures::{Stream, StreamExt};
 use reth_execution_types::ChangedAccount;
+use reth_primitives::{Block, BlockBody};
 use reth_primitives_traits::SealedBlock;
 use reth_transaction_pool::{CanonicalStateUpdate, PoolUpdateKind};
 use tokio::time::Instant;
 use zksync_os_interface::types::AccountDiff;
 use zksync_os_storage_api::ReplayRecord;
 use zksync_os_types::{
-    InteropRootsLogIndex, L1TxSerialId, SystemTxType, UpgradeMetadata, ZkEnvelope,
-    ZkTransaction,
+    InteropRootsLogIndex, L1TxSerialId, SystemTxType, UpgradeMetadata, ZkEnvelope, ZkTransaction,
 };
 
 /// General pool that provides unified access to all transaction sources in the system.

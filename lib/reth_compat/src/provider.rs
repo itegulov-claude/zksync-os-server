@@ -1,6 +1,8 @@
 use alloy::consensus::transaction::TransactionMeta;
 use alloy::eips::{BlockHashOrNumber, BlockId, BlockNumHash, BlockNumberOrTag};
-use alloy::primitives::{Address, B256, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue, TxHash, TxNumber};
+use alloy::primitives::{
+    Address, B256, BlockHash, BlockNumber, Bytes, StorageKey, StorageValue, TxHash, TxNumber,
+};
 use reth_chainspec::{Chain, ChainInfo, ChainSpec, ChainSpecBuilder, ChainSpecProvider};
 use reth_db_models::StoredBlockBodyIndices;
 use reth_primitives::{Block as EthBlock, EthPrimitives, Receipt, TransactionSigned};
@@ -15,13 +17,13 @@ use reth_storage_api::{
     StateProofProvider, StateProvider, StateProviderBox, StateProviderFactory, StateRootProvider,
     StorageRootProvider, TransactionVariant, TransactionsProvider,
 };
-use std::ops::{RangeBounds, RangeInclusive};
 use reth_trie_common::updates::TrieUpdates;
 use reth_trie_common::{
     AccountProof, HashedPostState, HashedStorage, MultiProof, MultiProofTargets, StorageMultiProof,
     StorageProof, TrieInput,
 };
 use std::fmt::Debug;
+use std::ops::{RangeBounds, RangeInclusive};
 use std::sync::Arc;
 use zk_os_api::helpers::{get_balance, get_nonce};
 use zksync_os_storage_api::{ReadRepository, ReadStateHistory, ViewState};
@@ -474,10 +476,7 @@ impl<State: ReadStateHistory, Repository: ReadRepository> ReceiptProviderIdExt
 impl<State: ReadStateHistory, Repository: ReadRepository> BlockBodyIndicesProvider
     for ZkProviderFactory<State, Repository>
 {
-    fn block_body_indices(
-        &self,
-        _num: u64,
-    ) -> ProviderResult<Option<StoredBlockBodyIndices>> {
+    fn block_body_indices(&self, _num: u64) -> ProviderResult<Option<StoredBlockBodyIndices>> {
         Ok(None)
     }
 
@@ -532,10 +531,7 @@ impl<State: ReadStateHistory, Repository: ReadRepository> BlockReader
         Ok(None)
     }
 
-    fn block_range(
-        &self,
-        _range: RangeInclusive<BlockNumber>,
-    ) -> ProviderResult<Vec<Self::Block>> {
+    fn block_range(&self, _range: RangeInclusive<BlockNumber>) -> ProviderResult<Vec<Self::Block>> {
         Ok(Vec::new())
     }
 
