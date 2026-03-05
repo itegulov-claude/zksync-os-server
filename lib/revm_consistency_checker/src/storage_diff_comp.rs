@@ -1,5 +1,5 @@
 use alloy::primitives::{Address, B256, U256, address};
-use reth_revm::{DatabaseRef, bytecode::Bytecode, db::CacheDB};
+use revm::{DatabaseRef, bytecode::Bytecode, database::CacheDB};
 use std::collections::{HashMap, HashSet};
 use zksync_os_interface::types::{AccountDiff, StorageWrite};
 

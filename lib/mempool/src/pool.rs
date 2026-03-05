@@ -3,7 +3,8 @@ use crate::subpools::l1::L1Subpool;
 use crate::subpools::l2::{L2Subpool, L2TransactionsStreamMarker};
 use crate::subpools::sl_chain_id::SlChainIdSubpool;
 use crate::subpools::upgrade::{UpgradeSubpool, UpgradeTransactionsStream};
-use alloy::consensus::{Block, BlockBody, Header, Sealed};
+use alloy::consensus::{Header, Sealed};
+use reth_primitives::{Block, BlockBody};
 use alloy::primitives::TxHash;
 use futures::stream::{BoxStream, PollNext};
 use futures::{Stream, StreamExt};
@@ -14,7 +15,7 @@ use tokio::time::Instant;
 use zksync_os_interface::types::AccountDiff;
 use zksync_os_storage_api::ReplayRecord;
 use zksync_os_types::{
-    InteropRootsLogIndex, L1TxSerialId, L2Envelope, SystemTxType, UpgradeMetadata, ZkEnvelope,
+    InteropRootsLogIndex, L1TxSerialId, SystemTxType, UpgradeMetadata, ZkEnvelope,
     ZkTransaction,
 };
 
@@ -196,7 +197,7 @@ impl<T: L2Subpool> Pool<T> {
             .await;
 
         let (header, hash) = header.into_parts();
-        let body = BlockBody::<L2Envelope>::default();
+        let body = BlockBody::default();
         let block = Block::new(header, body);
         let sealed_block = SealedBlock::new_unchecked(block, hash);
         let changed_accounts = account_diffs

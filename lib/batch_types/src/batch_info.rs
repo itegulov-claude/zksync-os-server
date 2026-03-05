@@ -285,7 +285,7 @@ fn calculate_da_fields(
             (PubdataMode::Validium, _) => (B256::ZERO, vec![0u8; 32], None),
             (PubdataMode::Blobs, _) => {
                 // returns error in case of internal error during sidecar calculation
-                let blob_sidecar = SidecarBuilder::<SimpleCoder>::from_slice(pubdata)
+                let blob_sidecar: BlobTransactionSidecar = SidecarBuilder::<SimpleCoder>::from_slice(pubdata)
                     .build()
                     .unwrap();
                 let versioned_hashes: Vec<u8> = blob_sidecar
