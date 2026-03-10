@@ -1,6 +1,6 @@
 use alloy::primitives::B256;
 use blake2::{Blake2s256, Digest};
-use revm::bytecode::LegacyAnalyzedBytecode;
+use reth_revm::bytecode::LegacyAnalyzedBytecode;
 
 pub const BYTECODE_ALIGNMENT: usize = core::mem::size_of::<u64>();
 pub const JUMPDEST: u8 = 0x5b;

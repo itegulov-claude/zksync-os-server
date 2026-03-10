@@ -1,8 +1,8 @@
 use alloy::primitives::U256;
 use async_trait::async_trait;
-use revm::ExecuteCommitEvm;
-use revm::context::{Context, ContextTr};
-use revm::database::CacheDB;
+use reth_revm::ExecuteCommitEvm;
+use reth_revm::context::{Context, ContextTr};
+use reth_revm::db::CacheDB;
 use std::collections::HashSet;
 use tokio::sync::mpsc::Sender;
 use zksync_os_interface::types::BlockOutput;

@@ -1,9 +1,9 @@
 use alloy::consensus::Transaction;
 use alloy::eips::Typed2718;
 use alloy::primitives::Bytes;
-use alloy::primitives::TxKind;
-use revm::bytecode::Bytecode;
-use revm::context::TxEnv;
+use reth_revm::context::TxEnv;
+use reth_revm::primitives::TxKind;
+use reth_revm::state::Bytecode;
 use zk_os_basic_system::system_implementation::flat_storage_model::AccountProperties;
 use zksync_os_revm::transaction::abstraction::ZKsyncTxBuilder;
 use zksync_os_revm::{ZKsyncTx, ZkSpecId};

@@ -1,11 +1,10 @@
 use crate::helpers::get_unpadded_code;
 use alloy::primitives::{Address, B256, KECCAK256_EMPTY};
-use revm::{
+use reth_revm::{
     DatabaseRef,
-    bytecode::Bytecode,
-    database_interface::DBErrorMarker,
+    db::DBErrorMarker,
     primitives::{StorageKey, StorageValue},
-    state::AccountInfo,
+    state::{AccountInfo, Bytecode},
 };
 use ruint::aliases::B160;
 use zk_ee::common_structs::derive_flat_storage_key;
@@ -76,6 +75,7 @@ where
                     nonce: props.nonce,
                     balance: props.balance,
                     code_hash: observable_code_hash,
+                    account_id: None,
                     code,
                 })
             })
