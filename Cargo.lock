@@ -14036,7 +14036,7 @@ dependencies = [
 [[package]]
 name = "zksync-os-revm"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/zksync-os-revm?branch=di%2Fbump-revm#46b29da6611c7444ef1dbc44b618f974ba5eb641"
+source = "git+https://github.com/matter-labs/zksync-os-revm?tag=v0.0.4#616c36089058a7d86e9c5af0c668ebefa2230668"
 dependencies = [
  "auto_impl",
  "revm",
