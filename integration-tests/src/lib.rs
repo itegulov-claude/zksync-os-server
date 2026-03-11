@@ -28,11 +28,10 @@ use tempfile::TempDir;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use zksync_os_network::NodeRecord;
-use zksync_os_object_store::{ObjectStoreConfig, ObjectStoreMode};
 use zksync_os_server::config::{
     BatchVerificationConfig, Config, FakeFriProversConfig, FakeSnarkProversConfig, FeeConfig,
-    GeneralConfig, NetworkConfig, ProverApiConfig, ProverInputGeneratorConfig, RpcConfig,
-    SequencerConfig, StatusServerConfig,
+    GeneralConfig, NetworkConfig, ProofStorageConfig, ProverApiConfig, ProverInputGeneratorConfig,
+    RpcConfig, SequencerConfig, StatusServerConfig,
 };
 use zksync_os_server::default_protocol_version::{NEXT_PROTOCOL_VERSION, PROTOCOL_VERSION};
 use zksync_os_state_full_diffs::FullDiffsState;
@@ -86,7 +85,6 @@ pub struct Tester {
 
     #[allow(dead_code)]
     tempdir: Arc<tempfile::TempDir>,
-    main_node_tempdir: Arc<tempfile::TempDir>,
 
     // Needed to be able to connect external nodes
     node_record: NodeRecord,
@@ -149,7 +147,6 @@ impl Tester {
             self.l1.clone(),
             false,
             Some(overrides_fun),
-            Some(self.main_node_tempdir.clone()),
             PROTOCOL_VERSION,
         )
         .await
@@ -159,7 +156,6 @@ impl Tester {
         l1: AnvilL1,
         enable_prover: bool,
         config_overrides: Option<impl FnOnce(&mut Config)>,
-        main_node_tempdir: Option<Arc<tempfile::TempDir>>,
         protocol_version: &str,
     ) -> anyhow::Result<Self> {
         // Initialize and **hold** locked ports for the duration of node initialization.
@@ -178,11 +174,8 @@ impl Tester {
 
         let tempdir = tempfile::tempdir()?;
         let rocks_db_path = tempdir.path().join("rocksdb");
-        let object_store_path = main_node_tempdir
-            .as_ref()
-            .map(|t| t.path())
-            .unwrap_or(tempdir.path())
-            .join("object_store");
+        // ENs will not use this dir
+        let proof_storage_path = tempdir.path().join("proof_storage_path");
         let (stop_sender, stop_receiver) = watch::channel(false);
 
         // Create a handle to run the sequencer in the background
@@ -211,12 +204,9 @@ impl Tester {
                 ..Default::default()
             },
             address: prover_api_address,
-            object_store: ObjectStoreConfig {
-                mode: ObjectStoreMode::FileBacked {
-                    file_backed_base_path: object_store_path.clone(),
-                },
-                max_retries: 1,
-                local_mirror_path: None,
+            proof_storage: ProofStorageConfig {
+                path: proof_storage_path.clone(),
+                ..Default::default()
             },
             ..Default::default()
         };
@@ -404,7 +394,6 @@ impl Tester {
             batch_verification_url,
             node_record,
             tempdir: tempdir.clone(),
-            main_node_tempdir: main_node_tempdir.unwrap_or(tempdir),
         })
     }
 }
@@ -415,6 +404,7 @@ pub struct TesterBuilder {
     block_time: Option<Duration>,
     batch_verification_threshold: Option<u64>,
     fee_config: Option<FeeConfig>,
+    gas_price_scale_factor: Option<f64>,
     estimate_gas_pubdata_price_factor: Option<f64>,
 }
 
@@ -440,6 +430,11 @@ impl TesterBuilder {
         self
     }
 
+    pub fn gas_price_scale_factor(mut self, factor: f64) -> Self {
+        self.gas_price_scale_factor = Some(factor);
+        self
+    }
+
     pub fn estimate_gas_pubdata_price_factor(mut self, factor: f64) -> Self {
         self.estimate_gas_pubdata_price_factor = Some(factor);
         self
@@ -462,6 +457,9 @@ impl TesterBuilder {
             if let Some(fee_config) = self.fee_config.clone() {
                 config.fee_config = fee_config;
             }
+            if let Some(factor) = self.gas_price_scale_factor {
+                config.rpc_config.gas_price_scale_factor = factor;
+            }
             if let Some(factor) = self.estimate_gas_pubdata_price_factor {
                 config.rpc_config.estimate_gas_pubdata_price_factor = factor;
             }
@@ -471,7 +469,6 @@ impl TesterBuilder {
             l1,
             self.enable_prover,
             Some(overrides_fun),
-            None,
             PROTOCOL_VERSION,
         )
         .await
@@ -574,7 +571,6 @@ impl MultiChainTesterBuilder {
                     l1,
                     false, // disable prover for faster tests
                     Some(chain_override),
-                    None,
                     NEXT_PROTOCOL_VERSION,
                 )
                 .await?;
