@@ -11568,6 +11568,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-casing"
+version = "0.2.0-beta.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3daeaea95548ac27e70c4e55f6bd871d69ba6463af5d73b9b627b44f8b520adc"
+dependencies = [
+ "test-casing-macro",
+]
+
+[[package]]
+name = "test-casing-macro"
+version = "0.2.0-beta.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cff5b5423c2f88c9fc1c139eda0e1f13b88367e9b5eb53d03f5f640f7d23070e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "test-log"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13889,6 +13909,7 @@ dependencies = [
  "vise",
  "zksync_os_contract_interface",
  "zksync_os_external_price_api",
+ "zksync_os_operator_signer",
  "zksync_os_types",
 ]
 
@@ -14124,6 +14145,7 @@ dependencies = [
  "zksync_os_merkle_tree",
  "zksync_os_mini_merkle_tree",
  "zksync_os_observability",
+ "zksync_os_operator_signer",
  "zksync_os_pipeline",
  "zksync_os_types",
 ]
@@ -14273,6 +14295,7 @@ dependencies = [
  "reth-provider",
  "secrecy",
  "semver 1.0.26",
+ "test-casing",
  "test-log",
  "thiserror 2.0.17",
  "tokio",
@@ -14308,6 +14331,16 @@ dependencies = [
  "url",
  "vise",
  "vise-exporter",
+]
+
+[[package]]
+name = "zksync_os_operator_signer"
+version = "0.16.0"
+dependencies = [
+ "alloy",
+ "anyhow",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -14575,6 +14608,7 @@ dependencies = [
  "rand 0.9.2",
  "reqwest",
  "ruint",
+ "rustls",
  "semver 1.0.26",
  "sentry",
  "serde",
@@ -14607,6 +14641,7 @@ dependencies = [
  "zksync_os_multivm",
  "zksync_os_network",
  "zksync_os_observability",
+ "zksync_os_operator_signer",
  "zksync_os_pipeline",
  "zksync_os_priority_tree",
  "zksync_os_reth_compat",
