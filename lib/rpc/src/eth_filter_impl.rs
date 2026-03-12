@@ -16,7 +16,7 @@ use dashmap::DashMap;
 use jsonrpsee::core::RpcResult;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, mpsc, watch};
 use tokio::time::MissedTickBehavior;
 use zksync_os_mempool::subpools::l2::L2Subpool;
 use zksync_os_mempool::{L2PooledTransaction, NewSubpoolTransactionStream};
@@ -35,7 +35,12 @@ pub struct EthFilterNamespace<RpcStorage, Mempool> {
 }
 
 impl<RpcStorage: ReadRpcStorage, Mempool: L2Subpool> EthFilterNamespace<RpcStorage, Mempool> {
-    pub fn new(config: RpcConfig, storage: RpcStorage, mempool: Mempool) -> Self {
+    pub fn new(
+        config: RpcConfig,
+        storage: RpcStorage,
+        mempool: Mempool,
+        stop_receiver: watch::Receiver<bool>,
+    ) -> Self {
         let query_limits =
             QueryLimits::new(config.max_blocks_per_filter, config.max_logs_per_response);
         let this = Self {
@@ -46,10 +51,11 @@ impl<RpcStorage: ReadRpcStorage, Mempool: L2Subpool> EthFilterNamespace<RpcStora
             active_filters: Arc::new(DashMap::new()),
         };
 
-        // todo: dangling task, respect stop_receiver and register task when there is a proper system
         let this_clone = this.clone();
         tokio::spawn(async move {
-            this_clone.watch_and_clear_stale_filters().await;
+            this_clone
+                .watch_and_clear_stale_filters(stop_receiver)
+                .await;
         });
 
         this
@@ -264,15 +270,23 @@ impl<RpcStorage: ReadRpcStorage, Mempool: L2Subpool> EthFilterNamespace<RpcStora
 
     /// Endless future that [`Self::clear_stale_filters`] every `stale_filter_ttl` interval.
     /// Nonetheless, this endless future frees the thread at every await point.
-    async fn watch_and_clear_stale_filters(&self) {
+    async fn watch_and_clear_stale_filters(&self, mut stop_receiver: watch::Receiver<bool>) {
         let mut interval = tokio::time::interval_at(
             tokio::time::Instant::now() + self.stale_filter_ttl,
             self.stale_filter_ttl,
         );
         interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
-            interval.tick().await;
-            self.clear_stale_filters(Instant::now()).await;
+            tokio::select! {
+                _ = interval.tick() => {
+                    self.clear_stale_filters(Instant::now()).await;
+                }
+                result = stop_receiver.changed() => {
+                    if result.is_err() || *stop_receiver.borrow() {
+                        break;
+                    }
+                }
+            }
         }
     }
 

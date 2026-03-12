@@ -98,7 +98,13 @@ pub async fn run_jsonrpsee_server<RpcStorage: ReadRpcStorage, Mempool: L2Subpool
         .into_rpc(),
     )?;
     rpc.merge(
-        EthFilterNamespace::new(config.clone(), storage.clone(), mempool.clone()).into_rpc(),
+        EthFilterNamespace::new(
+            config.clone(),
+            storage.clone(),
+            mempool.clone(),
+            stop_receiver.clone(),
+        )
+        .into_rpc(),
     )?;
     rpc.merge(EthPubsubNamespace::new(storage.clone(), mempool).into_rpc())?;
     rpc.merge(

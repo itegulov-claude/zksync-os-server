@@ -980,6 +980,7 @@ async fn run_main_node_pipeline(
             app_bin_base_path: config.general_config.rocks_db_path.join("app_bins").clone(),
             read_state: state.clone(),
             pubdata_mode: config.l1_sender_config.pubdata_mode,
+            skip_computation: config.prover_input_generator_config.skip_computation,
         })
         .pipe(Batcher {
             startup_config: BatcherStartupConfig {

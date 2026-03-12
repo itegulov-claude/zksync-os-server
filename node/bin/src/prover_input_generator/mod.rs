@@ -26,6 +26,9 @@ pub struct ProverInputGenerator<ReadState> {
     pub app_bin_base_path: PathBuf,
     pub read_state: ReadState,
     pub pubdata_mode: PubdataMode,
+    /// When true, skip the CPU-heavy RISC-V computation and emit empty prover inputs.
+    /// Intended for integration tests with fake provers.
+    pub skip_computation: bool,
 }
 
 #[async_trait]
@@ -55,8 +58,20 @@ impl<ReadState: ReadStateHistory + Clone + Send + 'static> PipelineComponent
         let enable_logging = self.enable_logging;
         let app_bin_base_path = self.app_bin_base_path;
         let maximum_in_flight_blocks = self.maximum_in_flight_blocks;
+        let skip_computation = self.skip_computation;
 
         let mut input = input.into_inner();
+
+        if skip_computation {
+            // In tests with fake provers the prover input is never verified, so we skip the
+            // CPU-heavy blocking computation. Drain input without forwarding to downstream
+            // pipeline stages; they will exit cleanly when their input channel closes.
+            // This also avoids holding RocksDB handles on the blocking-thread-pool, which
+            // would otherwise prevent the DB from being reopened on restart.
+            while input.recv().await.is_some() {}
+            return Ok(());
+        }
+
         // We want to process the first item separately as it involves some heavy trusted-setup-related precomputation.
         let Some(first_item) = input.recv().await else {
             return Ok(());

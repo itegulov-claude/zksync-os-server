@@ -168,11 +168,49 @@ impl Tester {
         .await
     }
 
+    /// Gracefully shut down and restart the node, reusing the same database and L1.
+    ///
+    /// Returns a new `Tester` connected to the restarted node. The original `Tester` is consumed.
+    pub async fn restart(mut self) -> anyhow::Result<Self> {
+        self.shutdown().await;
+        let l1 = self.l1.clone();
+        let tempdir = self.tempdir.clone();
+        Self::launch_node_inner(
+            l1,
+            false,
+            None::<fn(&mut Config)>,
+            PROTOCOL_VERSION,
+            tempdir,
+            true,
+        )
+        .await
+    }
+
     async fn launch_node(
         l1: AnvilL1,
         enable_prover: bool,
         config_overrides: Option<impl FnOnce(&mut Config)>,
         protocol_version: &str,
+    ) -> anyhow::Result<Self> {
+        let tempdir = Arc::new(tempfile::tempdir()?);
+        Self::launch_node_inner(
+            l1,
+            enable_prover,
+            config_overrides,
+            protocol_version,
+            tempdir,
+            false,
+        )
+        .await
+    }
+
+    async fn launch_node_inner(
+        l1: AnvilL1,
+        enable_prover: bool,
+        config_overrides: Option<impl FnOnce(&mut Config)>,
+        protocol_version: &str,
+        tempdir: Arc<TempDir>,
+        skip_prover_input_computation: bool,
     ) -> anyhow::Result<Self> {
         // Initialize and **hold** locked ports for the duration of node initialization.
         let l2_locked_port = LockedPort::acquire_unused().await?;
@@ -188,7 +226,6 @@ impl Tester {
         let batch_verification_url =
             format!("http://localhost:{}", batch_verification_locked_port.port);
 
-        let tempdir = tempfile::tempdir()?;
         let rocks_db_path = tempdir.path().join("rocksdb");
         // ENs will not use this dir
         let proof_storage_path = tempdir.path().join("proof_storage_path");
@@ -273,6 +310,12 @@ impl Tester {
             batcher_config: Default::default(),
             prover_input_generator_config: ProverInputGeneratorConfig {
                 logging_enabled: enable_prover,
+                // Skip the CPU-heavy RISC-V computation when requested. This avoids holding
+                // RocksDB handles on the blocking thread-pool after shutdown, which would
+                // otherwise prevent the DB from being reopened on restart. Only set for nodes
+                // that will be restarted (i.e. via Tester::restart()); all other nodes use the
+                // real computation so the full pipeline (Batcher, L1Sender, etc.) works.
+                skip_computation: skip_prover_input_computation,
                 ..Default::default()
             },
             prover_api_config,
@@ -392,7 +435,6 @@ impl Tester {
             .connect(&l2_rpc_ws_url)
             .await?;
 
-        let tempdir = Arc::new(tempdir);
         let prover_tester = ProverTester::new(
             EthDynProvider::new(l1.provider.clone()),
             EthDynProvider::new(l2_provider.clone()),
@@ -417,6 +459,7 @@ impl Tester {
 #[derive(Default)]
 pub struct TesterBuilder {
     enable_prover: bool,
+    skip_prover_input_computation: bool,
     block_time: Option<Duration>,
     batch_verification_threshold: Option<u64>,
     fee_config: Option<FeeConfig>,
@@ -428,6 +471,14 @@ impl TesterBuilder {
     #[cfg(feature = "prover-tests")]
     pub fn enable_prover(mut self) -> Self {
         self.enable_prover = true;
+        self
+    }
+
+    /// Skip the CPU-heavy RISC-V prover input computation. Use this for tests that restart
+    /// the node, so that RocksDB handles are not leaked onto the blocking thread-pool and
+    /// the DB can be reopened immediately after shutdown.
+    pub fn skip_prover_input_computation(mut self) -> Self {
+        self.skip_prover_input_computation = true;
         self
     }
 
@@ -481,11 +532,14 @@ impl TesterBuilder {
             }
         };
 
-        Tester::launch_node(
+        let tempdir = Arc::new(tempfile::tempdir()?);
+        Tester::launch_node_inner(
             l1,
             self.enable_prover,
             Some(overrides_fun),
             PROTOCOL_VERSION,
+            tempdir,
+            self.skip_prover_input_computation,
         )
         .await
     }
