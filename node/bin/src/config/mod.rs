@@ -594,12 +594,6 @@ pub struct ProverInputGeneratorConfig {
     /// The batcher will wait for block N to finish before starting block N + maximum_in_flight_blocks.
     #[config(default_t = 16)]
     pub maximum_in_flight_blocks: usize,
-
-    /// Skip the actual RISC-V computation and emit empty prover inputs instead.
-    /// Intended for integration tests where fake provers are used and the prover input
-    /// is never verified, so the CPU-heavy blocking computation can be omitted.
-    #[config(default_t = false)]
-    pub skip_computation: bool,
 }
 
 /// Only used on the Main Node.

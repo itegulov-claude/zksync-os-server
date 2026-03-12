@@ -107,7 +107,11 @@ const PRIORITY_TREE_DB_NAME: &str = "priority_txs_tree";
 const REPOSITORY_DB_NAME: &str = "repository";
 const BATCH_DB_NAME: &str = "batch";
 pub const INTERNAL_CONFIG_FILE_NAME: &str = "internal_config.json";
-const COMPONENT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+// Allow enough time for in-flight spawn_blocking tasks (e.g. RISC-V proof-input computation,
+// which can take ~15 s per block) to complete naturally before we forcibly abort pipeline tasks.
+// Without a generous timeout, the blocking threads keep running after abort and continue to
+// hold RocksDB file locks, which prevents the database from being reopened on restart.
+const COMPONENT_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone>(
@@ -980,7 +984,6 @@ async fn run_main_node_pipeline(
             app_bin_base_path: config.general_config.rocks_db_path.join("app_bins").clone(),
             read_state: state.clone(),
             pubdata_mode: config.l1_sender_config.pubdata_mode,
-            skip_computation: config.prover_input_generator_config.skip_computation,
         })
         .pipe(Batcher {
             startup_config: BatcherStartupConfig {

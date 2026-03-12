@@ -46,7 +46,9 @@ pub const BATCH_VERIFICATION_KEYS: [&str; 2] = [
     "0x7094f4b57ed88624583f68d2f241858f7dafb6d2558bc22d18991690d36b4e47",
     "0xf9306dd03807c08b646d47c739bd51e4d2a25b02bad0efb3d93f095982ac98cd",
 ];
-const NODE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
+// Must exceed the server's COMPONENT_SHUTDOWN_TIMEOUT (60 s) so that we give the server's
+// graceful-shutdown logic enough time to finish before we forcibly abort the task.
+const NODE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(90);
 /// Set of addresses (i.e. public keys) expected by batch verification. Derived from [`BATCH_VERIFICATION_KEYS`].
 static BATCH_VERIFICATION_ADDRESSES: LazyLock<Vec<String>> = LazyLock::new(|| {
     BATCH_VERIFICATION_KEYS
@@ -181,7 +183,6 @@ impl Tester {
             None::<fn(&mut Config)>,
             PROTOCOL_VERSION,
             tempdir,
-            true,
         )
         .await
     }
@@ -199,7 +200,6 @@ impl Tester {
             config_overrides,
             protocol_version,
             tempdir,
-            false,
         )
         .await
     }
@@ -210,7 +210,6 @@ impl Tester {
         config_overrides: Option<impl FnOnce(&mut Config)>,
         protocol_version: &str,
         tempdir: Arc<TempDir>,
-        skip_prover_input_computation: bool,
     ) -> anyhow::Result<Self> {
         // Initialize and **hold** locked ports for the duration of node initialization.
         let l2_locked_port = LockedPort::acquire_unused().await?;
@@ -310,12 +309,6 @@ impl Tester {
             batcher_config: Default::default(),
             prover_input_generator_config: ProverInputGeneratorConfig {
                 logging_enabled: enable_prover,
-                // Skip the CPU-heavy RISC-V computation when requested. This avoids holding
-                // RocksDB handles on the blocking thread-pool after shutdown, which would
-                // otherwise prevent the DB from being reopened on restart. Only set for nodes
-                // that will be restarted (i.e. via Tester::restart()); all other nodes use the
-                // real computation so the full pipeline (Batcher, L1Sender, etc.) works.
-                skip_computation: skip_prover_input_computation,
                 ..Default::default()
             },
             prover_api_config,
@@ -459,7 +452,6 @@ impl Tester {
 #[derive(Default)]
 pub struct TesterBuilder {
     enable_prover: bool,
-    skip_prover_input_computation: bool,
     block_time: Option<Duration>,
     batch_verification_threshold: Option<u64>,
     fee_config: Option<FeeConfig>,
@@ -471,14 +463,6 @@ impl TesterBuilder {
     #[cfg(feature = "prover-tests")]
     pub fn enable_prover(mut self) -> Self {
         self.enable_prover = true;
-        self
-    }
-
-    /// Skip the CPU-heavy RISC-V prover input computation. Use this for tests that restart
-    /// the node, so that RocksDB handles are not leaked onto the blocking thread-pool and
-    /// the DB can be reopened immediately after shutdown.
-    pub fn skip_prover_input_computation(mut self) -> Self {
-        self.skip_prover_input_computation = true;
         self
     }
 
@@ -539,7 +523,6 @@ impl TesterBuilder {
             Some(overrides_fun),
             PROTOCOL_VERSION,
             tempdir,
-            self.skip_prover_input_computation,
         )
         .await
     }

@@ -7,10 +7,7 @@ use zksync_os_integration_tests::assert_traits::ReceiptAssert;
 
 #[test_log::test(tokio::test)]
 async fn node_stop_and_restart_preserves_state() -> anyhow::Result<()> {
-    let tester = Tester::builder()
-        .skip_prover_input_computation()
-        .build()
-        .await?;
+    let tester = Tester::builder().build().await?;
 
     // Send a transaction and wait for it to be included.
     let receipt = tester
