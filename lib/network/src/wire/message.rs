@@ -4,8 +4,8 @@
 //! Examples include creating, encoding, and decoding protocol messages.
 
 use crate::version::AnyZksProtocolVersion;
-use crate::wire::replays::RecordOverride;
-use crate::wire::{BlockReplays, GetBlockReplays};
+use crate::wire::BlockReplays;
+use crate::wire::replays::{RecordOverride, WireGetBlockReplays};
 use alloy::primitives::BlockNumber;
 use alloy::primitives::bytes::{Buf, BufMut, BytesMut};
 use alloy_rlp::{Decodable, Encodable, Error as RlpError};
@@ -16,28 +16,27 @@ use zksync_os_storage_api::ReplayRecord;
 
 pub const ZKS_PROTOCOL: &str = "zks";
 
-/// Represents a message in the zks wire protocol, versions 1-1.
+/// Represents a message in the zks wire protocol.
 ///
-/// As of version 1, the only supported method of communication is streaming. Let's call main node MN
-/// and external node EN. As there can only be one MN, the connection can be either EN<->MN or
-/// EN<->EN.
+/// Let's call main node MN and external node EN. As there can only be one MN, the connection can
+/// be either EN<->MN or EN<->EN.
 ///
-/// In former case:
-///  * EN MUST send exactly one [`GetBlockReplays`] request at the start of connection.
-///  * MN MUST NOT send any [`GetBlockReplays`] requests.
-///  * On receiving EN's request and for the rest of the connection MN MUST send an indefinite number
-///    of [`BlockReplays`] messages.
+/// In an EN<->MN connection:
+///  * EN MUST NOT send any `GetBlockReplays` requests until any prior request is fully served.
+///  * MN MUST NOT send any `GetBlockReplays` requests.
+///  * **v1 (infinite streaming)**: EN sends exactly one `GetBlockReplays` with `record_count = 0`
+///    and MN responds with an indefinite stream of [`BlockReplays`] messages.
+///  * **v2 (on-demand)**: EN sends `GetBlockReplays` with `record_count = N`; MN responds with
+///    exactly N [`BlockReplays`] messages then stops. EN then sends a new `GetBlockReplays` to
+///    request the next batch.
 ///
-/// In latter case:
+/// In an EN<->EN connection:
 ///  * Both ENs MUST NOT send or receive any messages from each other.
-///
-/// This functionality will be revised in the future versions of the protocol. As of version 1 it
-/// corresponds to the legacy HTTP-based replay transport.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ZksMessage<P: AnyZksProtocolVersion> {
-    /// Represents a `GetBlockReplays` streaming request.
-    GetBlockReplays(GetBlockReplays),
-    /// Represents a `BlockReplays` streaming response (one of many).
+    /// Represents a `GetBlockReplays` request. The concrete type is version-specific.
+    GetBlockReplays(P::Request),
+    /// Represents a `BlockReplays` response (one of many).
     BlockReplays(BlockReplays<P::Record>),
 }
 
@@ -62,12 +61,14 @@ impl<P: AnyZksProtocolVersion> ZksMessage<P> {
 
     pub fn get_block_replays(
         starting_block: BlockNumber,
+        record_count: u64,
         record_overrides: Vec<RecordOverride>,
     ) -> Self {
-        Self::GetBlockReplays(GetBlockReplays {
+        Self::GetBlockReplays(P::Request::new(
             starting_block,
+            record_count,
             record_overrides,
-        })
+        ))
     }
 
     pub fn block_replays(records: Vec<ReplayRecord>) -> Self {
@@ -85,7 +86,7 @@ impl<P: AnyZksProtocolVersion> ZksMessage<P> {
     pub fn decode_message(buf: &mut &[u8]) -> alloy_rlp::Result<Self> {
         let message_type = ZksMessageId::decode(buf)?;
         Ok(match message_type {
-            ZksMessageId::GetBlockReplays => Self::GetBlockReplays(GetBlockReplays::decode(buf)?),
+            ZksMessageId::GetBlockReplays => Self::GetBlockReplays(P::Request::decode(buf)?),
             ZksMessageId::BlockReplays => {
                 Self::BlockReplays(BlockReplays::<P::Record>::decode(buf)?)
             }

@@ -1,7 +1,9 @@
 //! Support for representing the version of the `zks` protocol
 
 use crate::wire::message::ZksMessageId;
-use crate::wire::replays::{WireReplayRecord, v0, v1, v2};
+use crate::wire::replays::{
+    GetBlockReplays, GetBlockReplaysV2, WireGetBlockReplays, WireReplayRecord, v0, v1, v2,
+};
 use alloy::primitives::bytes::BufMut;
 use alloy::rlp::{Decodable, Encodable, Error as RlpError};
 use std::fmt::Debug;
@@ -11,8 +13,17 @@ pub trait AnyZksProtocolVersion: Debug + Send + Sync + Unpin + Clone + 'static {
     /// Wire format for replay record.
     type Record: WireReplayRecord;
 
+    /// Wire format for the `GetBlockReplays` request message.
+    type Request: WireGetBlockReplays;
+
     /// Version number matching this protocol version.
     const VERSION: ZksVersion;
+
+    /// How many records to request per batch.
+    ///
+    /// `None` means the EN requests an indefinite stream (v1 behaviour, `record_count = 0`).
+    /// `Some(N)` means the EN requests exactly N records at a time and re-requests when done.
+    const RECORDS_PER_REQUEST: Option<u64>;
 }
 
 /// Protocol version 0 is very bare-bones and used purely for testing.
@@ -21,8 +32,10 @@ pub struct ZksProtocolV0;
 
 impl AnyZksProtocolVersion for ZksProtocolV0 {
     type Record = v0::ReplayRecord;
+    type Request = GetBlockReplays;
 
     const VERSION: ZksVersion = ZksVersion::Zks0;
+    const RECORDS_PER_REQUEST: Option<u64> = None;
 }
 
 /// Protocol version 1 is the initial implementation that supports `GetBlockReplays` and `BlockReplays`
@@ -32,19 +45,23 @@ pub struct ZksProtocolV1;
 
 impl AnyZksProtocolVersion for ZksProtocolV1 {
     type Record = v1::ReplayRecord;
+    type Request = GetBlockReplays;
 
     const VERSION: ZksVersion = ZksVersion::Zks1;
+    const RECORDS_PER_REQUEST: Option<u64> = None;
 }
 
-/// Protocol version 1 is the initial implementation that supports `GetBlockReplays` and `BlockReplays`
-/// message types.
+/// Protocol version 2 adds on-demand fetching: ENs request records in fixed-size batches instead
+/// of receiving an indefinite stream.
 #[derive(Debug, Clone)]
 pub struct ZksProtocolV2;
 
 impl AnyZksProtocolVersion for ZksProtocolV2 {
     type Record = v2::ReplayRecord;
+    type Request = GetBlockReplaysV2;
 
     const VERSION: ZksVersion = ZksVersion::Zks2;
+    const RECORDS_PER_REQUEST: Option<u64> = Some(64);
 }
 
 /// Error thrown when failed to parse a valid [`ZksVersion`].

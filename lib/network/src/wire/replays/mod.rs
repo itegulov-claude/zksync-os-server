@@ -15,14 +15,77 @@ use alloy_rlp::{Decodable, Encodable, RlpDecodable, RlpEncodable};
 use std::fmt::Debug;
 use zksync_os_storage_api::ReplayRecord as StorageReplayRecord;
 
-/// A request for a peer to return block replays starting at the requested block number.
-/// The peer MUST start streaming indefinite number of [`BlockReplays`] responses.
+/// A request for a peer to start streaming block replays from `starting_block` indefinitely.
+/// Used by v0 and v1 where the MN streams records without bound.
+///
+/// Do not change this struct — its RLP layout is part of the v0/v1 wire format.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, RlpEncodable, RlpDecodable)]
 pub struct GetBlockReplays {
     /// The block number that the peer should start returning replay blocks from.
     pub starting_block: u64,
     /// Records for which DB keys should be overridden. Used only for debugging.
     pub record_overrides: Vec<RecordOverride>,
+}
+
+/// A request for a peer to return exactly `record_count` block replays starting at
+/// `starting_block`, then stop. Used by v2 for on-demand batch fetching.
+///
+/// Do not change this struct — its RLP layout is part of the v2 wire format.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, RlpEncodable, RlpDecodable)]
+pub struct GetBlockReplaysV2 {
+    /// The block number that the peer should start returning replay blocks from.
+    pub starting_block: u64,
+    /// Number of records to return.
+    pub record_count: u64,
+    /// Records for which DB keys should be overridden. Used only for debugging.
+    pub record_overrides: Vec<RecordOverride>,
+}
+
+/// Abstracts over the `GetBlockReplays` message so that [`ZksMessage`] and the protocol state
+/// machine can be generic over all protocol versions without hard-coding a single struct.
+pub trait WireGetBlockReplays: Encodable + Decodable + Debug + Clone + PartialEq + Eq {
+    /// Construct a new request.
+    fn new(starting_block: u64, record_count: u64, record_overrides: Vec<RecordOverride>) -> Self;
+    /// Block number to start from.
+    fn starting_block(&self) -> u64;
+    /// How many records the MN should return. `0` means stream indefinitely (v1 behaviour).
+    fn record_count(&self) -> u64;
+}
+
+impl WireGetBlockReplays for GetBlockReplays {
+    fn new(starting_block: u64, _record_count: u64, record_overrides: Vec<RecordOverride>) -> Self {
+        Self {
+            starting_block,
+            record_overrides,
+        }
+    }
+
+    fn starting_block(&self) -> u64 {
+        self.starting_block
+    }
+
+    /// Always 0 — v1 streams indefinitely.
+    fn record_count(&self) -> u64 {
+        0
+    }
+}
+
+impl WireGetBlockReplays for GetBlockReplaysV2 {
+    fn new(starting_block: u64, record_count: u64, record_overrides: Vec<RecordOverride>) -> Self {
+        Self {
+            starting_block,
+            record_count,
+            record_overrides,
+        }
+    }
+
+    fn starting_block(&self) -> u64 {
+        self.starting_block
+    }
+
+    fn record_count(&self) -> u64 {
+        self.record_count
+    }
 }
 
 /// Specifies one overridden block replay record. This allows EN to sync replay record that is not
@@ -35,7 +98,7 @@ pub struct RecordOverride {
     pub db_key: Bytes,
 }
 
-/// The response to [`GetBlockReplays`], containing one or more consecutive replay records.
+/// The response to a `GetBlockReplays` request, containing one or more consecutive replay records.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, RlpEncodable, RlpDecodable)]
 pub struct BlockReplays<T: WireReplayRecord> {
     pub records: Vec<T>,

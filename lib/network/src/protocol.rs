@@ -2,10 +2,12 @@
 
 use crate::version::AnyZksProtocolVersion;
 use crate::wire::message::{ZKS_PROTOCOL, ZksMessage};
-use crate::wire::replays::{RecordOverride, WireReplayRecord};
+use crate::wire::replays::{RecordOverride, WireGetBlockReplays, WireReplayRecord};
 use alloy::primitives::BlockNumber;
 use alloy::primitives::bytes::BytesMut;
-use futures::{Stream, StreamExt};
+use futures::future::BoxFuture;
+use futures::stream::BoxStream;
+use futures::{FutureExt, Stream, StreamExt};
 use reth_eth_wire::capability::SharedCapabilities;
 use reth_eth_wire::multiplex::ProtocolConnection;
 use reth_eth_wire::protocol::Protocol;
@@ -17,9 +19,9 @@ use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, ready};
+use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
-use tracing::Instrument;
 use zksync_os_storage_api::{ReadReplay, ReadReplayExt, ReplayRecord};
 use zksync_os_types::NodeRole;
 
@@ -195,14 +197,10 @@ pub struct ZksProtocolConnectionHandler<P: AnyZksProtocolVersion, Replay: Clone>
     _phantom: PhantomData<P>,
 }
 
-/// Channel capacity for outbound protocol messages. Provides natural backpressure so the MN
-/// does not produce records faster than the EN can consume them.
-const OUTBOUND_CHANNEL_CAPACITY: usize = 32;
-
 impl<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone> ConnectionHandler
     for ZksProtocolConnectionHandler<P, Replay>
 {
-    type Connection = ZksConnection;
+    type Connection = ZksConnection<P, Replay>;
 
     fn protocol(&self) -> Protocol {
         ZksMessage::<P>::protocol()
@@ -229,195 +227,337 @@ impl<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone> ConnectionHandler
         peer_id: PeerId,
         conn: ProtocolConnection,
     ) -> Self::Connection {
+        // Emit connection established event.
         self.state
             .events_sender
             .send(ProtocolEvent::Established { direction, peer_id })
             .ok();
 
-        let (outbound_tx, outbound_rx) = mpsc::channel(OUTBOUND_CHANNEL_CAPACITY);
-        let conn = into_message_stream::<P>(conn);
-
-        let task = if self.node_role.is_main() {
-            tokio::spawn(
-                run_mn_connection::<P, _>(conn, outbound_tx, self.replay)
-                    .instrument(tracing::info_span!("mn_connection", %peer_id)),
-            )
-        } else {
-            tokio::spawn(
-                run_en_connection::<P>(
-                    conn,
-                    outbound_tx,
-                    self.starting_block,
-                    self.record_overrides,
-                    self.replay_sender,
-                )
-                .instrument(tracing::info_span!("en_connection", %peer_id)),
-            )
-        };
-
         ZksConnection {
-            outbound_rx,
-            task,
+            peer_id,
+            conn,
+            state: if self.node_role.is_main() {
+                State::WaitingForRequest {
+                    replay: self.replay.clone(),
+                }
+            } else {
+                State::WantsToRequest {
+                    starting_block: self.starting_block,
+                    record_overrides: self.record_overrides,
+                }
+            },
+            replay_sender: self.replay_sender.clone(),
             _permit: self.permit,
+            _phantom: self._phantom,
         }
     }
 }
 
-/// The outbound side of a zks protocol connection.
-///
-/// Wraps an mpsc receiver fed by a background Tokio task ([`run_mn_connection`] or
-/// [`run_en_connection`]) that owns the actual protocol logic. Dropping this struct aborts the
-/// background task and releases the connection permit.
-pub struct ZksConnection {
-    outbound_rx: mpsc::Receiver<BytesMut>,
-    task: tokio::task::JoinHandle<()>,
+pub struct ZksConnection<P: AnyZksProtocolVersion, Replay> {
+    /// Remote peer ID.
+    peer_id: PeerId,
+    /// Protocol connection.
+    conn: ProtocolConnection,
+    /// Current connection state.
+    state: State<Replay>,
+    replay_sender: mpsc::Sender<ReplayRecord>,
+    /// Owned permit that corresponds to a taken active connection slot.
     _permit: OwnedSemaphorePermit,
+    _phantom: PhantomData<P>,
 }
 
-impl Drop for ZksConnection {
-    fn drop(&mut self) {
-        self.task.abort();
-    }
+enum State<Replay> {
+    // EN states
+    /// Wants to send peer the request for replay records.
+    WantsToRequest {
+        /// Starting block that the node will request records from.
+        starting_block: Arc<RwLock<BlockNumber>>,
+        /// All overrides to pass through when requesting records.
+        record_overrides: Vec<RecordOverride>,
+    },
+    /// Waits for peer to send replay records.
+    WaitingForRecords {
+        /// Next block that is expected to be sent by main node.
+        next_block: Arc<RwLock<BlockNumber>>,
+        /// How many more records are expected in this batch.
+        /// `None` means the stream is indefinite (v1 behaviour).
+        records_remaining: Option<u64>,
+        /// Optional [`Future`] that is sending last received replay record.
+        fut: Option<BoxFuture<'static, Result<(), SendError<ReplayRecord>>>>,
+    },
+
+    // MN states
+    /// Waits for peer to request replay records.
+    WaitingForRequest { replay: Replay },
+    /// Currently sending replay records.
+    Responding {
+        /// Kept alive so we can return to [`State::WaitingForRequest`] once a bounded batch
+        /// completes. `None` for v1-style indefinite streaming.
+        replay: Option<Replay>,
+        stream: BoxStream<'static, ReplayRecord>,
+    },
+
+    /// Indicates that this stream has previously been terminated.
+    Terminated,
 }
 
-impl Stream for ZksConnection {
+impl<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone> Stream for ZksConnection<P, Replay> {
     type Item = BytesMut;
 
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.outbound_rx.poll_recv(cx)
-    }
-}
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
 
-/// Wraps a raw [`ProtocolConnection`] into a typed message stream.
-///
-/// Each incoming byte frame is decoded as a [`ZksMessage`]. Decode errors are logged and
-/// terminate the stream (by returning `None`), matching the behaviour of a closed connection.
-fn into_message_stream<P: AnyZksProtocolVersion>(
-    conn: ProtocolConnection,
-) -> impl Stream<Item = ZksMessage<P>> + Unpin + Send + 'static {
-    Box::pin(conn.scan((), |_, raw| {
-        let result = ZksMessage::<P>::decode_message(&mut &raw[..]);
-        async move {
-            match result {
+        if matches!(this.state, State::Terminated) {
+            return Poll::Ready(None);
+        }
+
+        let peer_id = this.peer_id;
+        // EN: send the next (or initial) request immediately.
+        if let State::WantsToRequest {
+            starting_block,
+            record_overrides,
+        } = &mut this.state
+        {
+            let next_block = *starting_block.read().unwrap();
+            let record_count = P::RECORDS_PER_REQUEST.unwrap_or(0);
+            tracing::info!(
+                next_block,
+                record_count,
+                "requesting block replays from main node"
+            );
+            let message = ZksMessage::<P>::get_block_replays(
+                next_block,
+                record_count,
+                std::mem::take(record_overrides),
+            );
+            let encoded = message.encoded();
+            this.state = State::WaitingForRecords {
+                next_block: starting_block.clone(),
+                records_remaining: P::RECORDS_PER_REQUEST,
+                fut: None,
+            };
+            return Poll::Ready(Some(encoded));
+        }
+
+        let _span = tracing::info_span!("poll connection", %peer_id);
+        loop {
+            // MN: drive the outbound record stream.
+            let stream_ended = if let State::Responding { stream, .. } = &mut this.state {
+                match stream.poll_next_unpin(cx) {
+                    Poll::Ready(Some(record)) => {
+                        return Poll::Ready(Some(
+                            ZksMessage::<P>::block_replays(vec![record]).encoded(),
+                        ));
+                    }
+                    Poll::Ready(None) => true,
+                    Poll::Pending => false,
+                }
+            } else {
+                false
+            };
+
+            if stream_ended {
+                // Stream exhausted. For bounded batches (v2) return to WaitingForRequest so the
+                // EN can ask for the next batch; for infinite streams (v1) terminate.
+                match std::mem::replace(&mut this.state, State::Terminated) {
+                    State::Responding {
+                        replay: Some(replay),
+                        ..
+                    } => {
+                        tracing::debug!(
+                            "finished serving batch of records; waiting for next request"
+                        );
+                        this.state = State::WaitingForRequest { replay };
+                        // Fall through to poll the connection for the next GetBlockReplays.
+                    }
+                    _ => {
+                        tracing::info!("replay stream is closed; terminating connection");
+                        break;
+                    }
+                }
+            }
+
+            // EN: make sure we do not have an in-progress Future before receiving the next message.
+            if let State::WaitingForRecords {
+                next_block,
+                records_remaining,
+                fut: Some(fut),
+            } = &mut this.state
+            {
+                if ready!(fut.poll_unpin(cx)).is_err() {
+                    tracing::trace!("network replay channel is closed");
+                    break;
+                }
+                // Future completed; mark this record as delivered.
+                *next_block.write().unwrap() += 1;
+                let new_remaining = records_remaining.map(|n| n - 1);
+                if new_remaining == Some(0) {
+                    // Batch fully delivered — re-request the next batch.
+                    this.state = State::WantsToRequest {
+                        starting_block: next_block.clone(),
+                        record_overrides: vec![],
+                    };
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+                this.state = State::WaitingForRecords {
+                    next_block: next_block.clone(),
+                    records_remaining: new_remaining,
+                    fut: None,
+                };
+            }
+
+            let maybe_msg = ready!(this.conn.poll_next_unpin(cx));
+            let Some(next) = maybe_msg else { break };
+            let msg = match ZksMessage::<P>::decode_message(&mut &next[..]) {
                 Ok(msg) => {
                     tracing::trace!(?msg, "processing peer message");
-                    Some(msg)
+                    msg
                 }
                 Err(error) => {
-                    tracing::info!(%error, "error decoding peer message; terminating");
-                    None
+                    tracing::info!(%error, "error decoding peer message");
+                    break;
+                }
+            };
+
+            match msg {
+                ZksMessage::GetBlockReplays(message) => {
+                    // We take ownership of `state` by replacing it with `Terminated`. This is
+                    // correct as long as all match arms below either set a new state or `break`.
+                    this.state = match std::mem::replace(&mut this.state, State::Terminated) {
+                        state @ State::WantsToRequest { .. } => {
+                            tracing::info!(
+                                "ignoring request as local node also wants to request records"
+                            );
+                            state
+                        }
+                        state @ State::WaitingForRecords { .. } => {
+                            tracing::info!(
+                                "ignoring request as local node is also waiting for records"
+                            );
+                            state
+                        }
+                        State::WaitingForRequest { replay } => {
+                            let record_count = message.record_count();
+                            if record_count == 0 {
+                                // v1-style: stream indefinitely.
+                                State::Responding {
+                                    replay: None,
+                                    stream: replay.stream_from_forever(
+                                        message.starting_block(),
+                                        HashMap::new(),
+                                    ),
+                                }
+                            } else {
+                                // v2-style: bounded batch.
+                                let stream = replay
+                                    .clone()
+                                    .stream_from_forever(message.starting_block(), HashMap::new())
+                                    .take(record_count as usize)
+                                    .boxed();
+                                State::Responding {
+                                    replay: Some(replay),
+                                    stream,
+                                }
+                            }
+                        }
+                        State::Responding { .. } => {
+                            tracing::info!(
+                                "received two `GetBlockReplays` requests from the same peer"
+                            );
+                            break;
+                        }
+                        State::Terminated => {
+                            break;
+                        }
+                    };
+                }
+                ZksMessage::BlockReplays(message) => {
+                    let (next_block, records_remaining) =
+                        match std::mem::replace(&mut this.state, State::Terminated) {
+                            State::WaitingForRecords {
+                                fut,
+                                next_block,
+                                records_remaining,
+                            } => {
+                                if fut.is_some() {
+                                    unreachable!(
+                                        "we should not have an in-progress future at this point"
+                                    );
+                                }
+                                (next_block, records_remaining)
+                            }
+                            _ => {
+                                tracing::info!("unrequested replay record received; terminating");
+                                break;
+                            }
+                        };
+                    // todo: logic below relies on there being one record per message
+                    //       we can (and should) adapt it to handle multiple records in the future
+                    assert_eq!(
+                        message.records.len(),
+                        1,
+                        "only 1 record per message is supported right now"
+                    );
+                    let record = message.records.into_iter().next().unwrap();
+                    let block_number = record.block_number();
+                    tracing::debug!(block_number, "received block replay");
+                    let record = match record.try_into() {
+                        Ok(record) => record,
+                        Err(error) => {
+                            tracing::info!(%error, "failed to recover replay block");
+                            break;
+                        }
+                    };
+
+                    let expected_next_block = *next_block.read().unwrap();
+                    assert_eq!(block_number, expected_next_block);
+
+                    let sender = this.replay_sender.clone();
+                    let mut fut = async move { sender.send(record).await }.boxed();
+                    match fut.poll_unpin(cx) {
+                        Poll::Ready(Ok(())) => {
+                            tracing::trace!(block_number, "sent block replay immediately");
+                            *next_block.write().unwrap() += 1;
+                            let new_remaining = records_remaining.map(|n| n - 1);
+                            if new_remaining == Some(0) {
+                                // Batch fully received — re-request the next batch.
+                                this.state = State::WantsToRequest {
+                                    starting_block: next_block,
+                                    record_overrides: vec![],
+                                };
+                                cx.waker().wake_by_ref();
+                                return Poll::Pending;
+                            }
+                            this.state = State::WaitingForRecords {
+                                next_block,
+                                records_remaining: new_remaining,
+                                fut: None,
+                            };
+                        }
+                        Poll::Ready(Err(_)) => {
+                            tracing::trace!("network replay channel is closed");
+                            break;
+                        }
+                        Poll::Pending => {
+                            // Future is pending; save it to poll later.
+                            tracing::debug!(block_number, "sending block replay (pending)");
+                            // It's important we do not increment `next_block` here — the
+                            // connection might get severed before the future completes.
+                            this.state = State::WaitingForRecords {
+                                next_block,
+                                records_remaining,
+                                fut: Some(fut),
+                            };
+                            return Poll::Pending;
+                        }
+                    }
                 }
             }
         }
-    }))
-}
 
-/// Background task that drives a **main-node** side of a connection.
-///
-/// Waits for a [`GetBlockReplays`] request from the EN, then streams replay records from
-/// storage to the EN indefinitely.
-async fn run_mn_connection<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone>(
-    mut conn: impl Stream<Item = ZksMessage<P>> + Unpin,
-    outbound_tx: mpsc::Sender<BytesMut>,
-    replay: Replay,
-) {
-    // Receive the single GetBlockReplays request for this connection.
-    let request = match conn.next().await {
-        Some(ZksMessage::GetBlockReplays(request)) => request,
-        Some(ZksMessage::BlockReplays(_)) => {
-            tracing::info!("received unexpected block replay response; terminating");
-            return;
-        }
-        None => return,
-    };
-
-    // Stream records to the EN indefinitely.
-    let mut stream = replay
-        .clone()
-        .stream_from_forever(request.starting_block, HashMap::new());
-    loop {
-        tokio::select! {
-            // Biased because first branch always leads to early return. Makes sense to check it
-            // first.
-            biased;
-
-            msg = conn.next() => {
-                // No messages are expected from the peer after GetBlockReplays.
-                match msg {
-                    Some(msg) => tracing::info!(?msg, "received unexpected message from peer; terminating"),
-                    None => tracing::info!("peer connection closed; terminating"),
-                }
-                return;
-            }
-            record = stream.next() => {
-                let Some(record) = record else {
-                    // stream_from_forever only ends if storage closes.
-                    tracing::info!("replay stream closed; terminating");
-                    return;
-                };
-                let encoded = ZksMessage::<P>::block_replays(vec![record]).encoded();
-                if outbound_tx.send(encoded).await.is_err() {
-                    return;
-                }
-            }
-        }
-    }
-}
-
-/// Background task that drives an **external-node** side of a connection.
-///
-/// Sends a [`GetBlockReplays`] request immediately, then forwards each received
-/// [`BlockReplays`] record to the local sequencer via `replay_sender` and advances
-/// `starting_block`.
-async fn run_en_connection<P: AnyZksProtocolVersion>(
-    mut conn: impl Stream<Item = ZksMessage<P>> + Unpin,
-    outbound_tx: mpsc::Sender<BytesMut>,
-    starting_block: Arc<RwLock<BlockNumber>>,
-    record_overrides: Vec<RecordOverride>,
-    replay_sender: mpsc::Sender<ReplayRecord>,
-) {
-    let next_block = *starting_block.read().unwrap();
-    tracing::info!(next_block, "requesting block replays from main node");
-    let msg = ZksMessage::<P>::get_block_replays(next_block, record_overrides);
-    if outbound_tx.send(msg.encoded()).await.is_err() {
-        return;
-    }
-
-    while let Some(msg) = conn.next().await {
-        let response = match msg {
-            ZksMessage::GetBlockReplays(_) => {
-                tracing::info!("ignoring request as local node is also waiting for records");
-                continue;
-            }
-            ZksMessage::BlockReplays(response) => response,
-        };
-        // todo: logic below relies on there being one record per message
-        //       we can (and should) adapt it to handle multiple records in the future
-        assert_eq!(
-            response.records.len(),
-            1,
-            "only 1 record per message is supported right now"
-        );
-        let record = response.records.into_iter().next().unwrap();
-        let block_number = record.block_number();
-        tracing::debug!(block_number, "received block replay");
-        let record: ReplayRecord = match record.try_into() {
-            Ok(record) => record,
-            Err(error) => {
-                tracing::info!(%error, "failed to recover replay block");
-                break;
-            }
-        };
-
-        let expected_next_block = *starting_block.read().unwrap();
-        assert_eq!(block_number, expected_next_block);
-
-        if replay_sender.send(record).await.is_err() {
-            tracing::trace!("network replay channel is closed");
-            break;
-        }
-        // Only advance after the record is successfully delivered, so a reconnect
-        // does not skip a block if the channel send was the last thing to fail.
-        *starting_block.write().unwrap() += 1;
+        // Terminate the connection.
+        this.state = State::Terminated;
+        Poll::Ready(None)
     }
 }
