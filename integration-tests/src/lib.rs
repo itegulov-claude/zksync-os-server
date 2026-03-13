@@ -309,6 +309,9 @@ impl Tester {
             batcher_config: Default::default(),
             prover_input_generator_config: ProverInputGeneratorConfig {
                 logging_enabled: enable_prover,
+                // Tests don't need PIG throughput; 1 limits in-flight work so shutdown
+                // is bounded by a single block's compute time rather than 16.
+                maximum_in_flight_blocks: 1,
                 ..Default::default()
             },
             prover_api_config,
