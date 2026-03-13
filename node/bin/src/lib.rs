@@ -946,7 +946,7 @@ async fn run_main_node_pipeline(
             starting_block,
             block_time: config.sequencer_config.block_time,
             max_transactions_in_block: config.sequencer_config.max_transactions_in_block,
-            stop_receiver,
+            stop_receiver: stop_receiver.clone(),
             rebuild_options: config
                 .sequencer_config
                 .block_rebuild
@@ -984,6 +984,7 @@ async fn run_main_node_pipeline(
             app_bin_base_path: config.general_config.rocks_db_path.join("app_bins").clone(),
             read_state: state.clone(),
             pubdata_mode: config.l1_sender_config.pubdata_mode,
+            stop_receiver: stop_receiver.clone(),
         })
         .pipe(Batcher {
             startup_config: BatcherStartupConfig {

@@ -5,7 +5,7 @@ use futures::{StreamExt, TryStreamExt};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio_stream::wrappers::ReceiverStream;
 use vise::{Buckets, Histogram, LabeledFamily, Metrics, Unit};
 use zk_ee::common_structs::DACommitmentScheme;
@@ -26,6 +26,7 @@ pub struct ProverInputGenerator<ReadState> {
     pub app_bin_base_path: PathBuf,
     pub read_state: ReadState,
     pub pubdata_mode: PubdataMode,
+    pub stop_receiver: watch::Receiver<bool>,
 }
 
 #[async_trait]
@@ -55,6 +56,7 @@ impl<ReadState: ReadStateHistory + Clone + Send + 'static> PipelineComponent
         let enable_logging = self.enable_logging;
         let app_bin_base_path = self.app_bin_base_path;
         let maximum_in_flight_blocks = self.maximum_in_flight_blocks;
+        let stop_receiver = self.stop_receiver;
 
         let mut input = input.into_inner();
 
@@ -70,53 +72,66 @@ impl<ReadState: ReadStateHistory + Clone + Send + 'static> PipelineComponent
         // Streams are processed sequentially but in the same way.
         for s in streams {
             // Generates prover input. Uses up to `maximum_in_flight_blocks` threads
-            s.map(|(block_output, replay_record, tree)| {
-                let block_number = replay_record.block_context.block_number;
+            let result = s
+                .map(|(block_output, replay_record, tree)| {
+                    let block_number = replay_record.block_context.block_number;
 
-                tracing::debug!(
-                    block_number,
-                    "ProverInputGenerator started processing block {} with {} transactions",
-                    block_number,
-                    replay_record.transactions.len(),
-                );
-                let read_state_clone = read_state.clone();
-                let app_bin_base_path_clone = app_bin_base_path.clone();
-
-                // we need to adapt pubdata mode depending on protocol version, to ensure automatic DA mode change during v30 upgrade
-                let da_commitment_scheme = pubdata_mode
-                    .adapt_for_protocol_version(&replay_record.protocol_version)
-                    .da_commitment_scheme();
-                let da_commitment_scheme = (da_commitment_scheme as u8)
-                    .try_into()
-                    .expect("Failed to convert DA commitment scheme");
-
-                tokio::task::spawn_blocking(move || {
-                    let prover_input = compute_prover_input(
-                        &replay_record,
-                        read_state_clone,
-                        tree.block_start.clone(),
-                        da_commitment_scheme,
-                        app_bin_base_path_clone,
-                        enable_logging,
+                    tracing::debug!(
+                        block_number,
+                        "ProverInputGenerator started processing block {} with {} transactions",
+                        block_number,
+                        replay_record.transactions.len(),
                     );
-                    (block_output, replay_record, prover_input, tree)
+                    let read_state_clone = read_state.clone();
+                    let app_bin_base_path_clone = app_bin_base_path.clone();
+
+                    // we need to adapt pubdata mode depending on protocol version, to ensure automatic DA mode change during v30 upgrade
+                    let da_commitment_scheme = pubdata_mode
+                        .adapt_for_protocol_version(&replay_record.protocol_version)
+                        .da_commitment_scheme();
+                    let da_commitment_scheme = (da_commitment_scheme as u8)
+                        .try_into()
+                        .expect("Failed to convert DA commitment scheme");
+
+                    tokio::task::spawn_blocking(move || {
+                        let prover_input = compute_prover_input(
+                            &replay_record,
+                            read_state_clone,
+                            tree.block_start.clone(),
+                            da_commitment_scheme,
+                            app_bin_base_path_clone,
+                            enable_logging,
+                        );
+                        (block_output, replay_record, prover_input, tree)
+                    })
                 })
-            })
-            .buffered(maximum_in_flight_blocks)
-            .map_err(|e| anyhow::anyhow!(e))
-            .try_for_each(|(block_output, replay_record, prover_input, tree)| async {
-                latency_tracker.enter_state(GenericComponentState::WaitingSend);
-                tracing::debug!(
-                    block_number = block_output.header.number,
-                    "sending block with prover input to batcher",
-                );
-                output
-                    .send((block_output, replay_record, prover_input, tree))
-                    .await?;
-                latency_tracker.enter_state(GenericComponentState::ProcessingOrWaitingRecv);
-                Ok(())
-            })
-            .await?;
+                .buffered(maximum_in_flight_blocks)
+                .map_err(|e| anyhow::anyhow!(e))
+                .try_for_each(|(block_output, replay_record, prover_input, tree)| async {
+                    if *stop_receiver.borrow() {
+                        return Err(anyhow::anyhow!("stop signal received"));
+                    }
+                    latency_tracker.enter_state(GenericComponentState::WaitingSend);
+                    tracing::debug!(
+                        block_number = block_output.header.number,
+                        "sending block with prover input to batcher",
+                    );
+                    output
+                        .send((block_output, replay_record, prover_input, tree))
+                        .await?;
+                    latency_tracker.enter_state(GenericComponentState::ProcessingOrWaitingRecv);
+                    Ok(())
+                })
+                .await;
+
+            match result {
+                Ok(()) => {}
+                Err(_) if *stop_receiver.borrow() => {
+                    tracing::info!("ProverInputGenerator: stop signal received, shutting down");
+                    return Ok(());
+                }
+                Err(e) => return Err(e),
+            }
         }
         Ok(())
     }
