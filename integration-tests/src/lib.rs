@@ -312,7 +312,6 @@ impl Tester {
                 // Tests don't need PIG throughput; 1 limits in-flight work so shutdown
                 // is bounded by a single block's compute time rather than 16.
                 maximum_in_flight_blocks: 1,
-                ..Default::default()
             },
             prover_api_config,
             status_server_config,
