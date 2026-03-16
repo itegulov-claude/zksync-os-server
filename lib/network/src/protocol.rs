@@ -235,6 +235,7 @@ impl<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone> ConnectionHandler
             .ok();
 
         let (outbound_tx, outbound_rx) = mpsc::channel(OUTBOUND_CHANNEL_CAPACITY);
+        let conn = into_message_stream::<P>(conn);
 
         let task = if self.node_role.is_main() {
             tokio::spawn(
@@ -287,35 +288,47 @@ impl Stream for ZksConnection {
     }
 }
 
+/// Wraps a raw [`ProtocolConnection`] into a typed message stream.
+///
+/// Each incoming byte frame is decoded as a [`ZksMessage`]. Decode errors are logged and
+/// terminate the stream (by returning `None`), matching the behaviour of a closed connection.
+fn into_message_stream<P: AnyZksProtocolVersion>(
+    conn: ProtocolConnection,
+) -> impl Stream<Item = ZksMessage<P>> + Unpin + Send + 'static {
+    Box::pin(conn.scan((), |_, raw| {
+        let result = ZksMessage::<P>::decode_message(&mut &raw[..]);
+        async move {
+            match result {
+                Ok(msg) => {
+                    tracing::trace!(?msg, "processing peer message");
+                    Some(msg)
+                }
+                Err(error) => {
+                    tracing::info!(%error, "error decoding peer message; terminating");
+                    None
+                }
+            }
+        }
+    }))
+}
+
 /// Background task that drives a **main-node** side of a connection.
 ///
 /// Waits for a [`GetBlockReplays`] request from the EN, then streams replay records from
 /// storage to the EN indefinitely.
 async fn run_mn_connection<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone>(
-    mut conn: ProtocolConnection,
+    mut conn: impl Stream<Item = ZksMessage<P>> + Unpin,
     outbound_tx: mpsc::Sender<BytesMut>,
     replay: Replay,
 ) {
     // Receive the single GetBlockReplays request for this connection.
-    let Some(raw) = conn.next().await else {
-        return;
-    };
-    let msg = match ZksMessage::<P>::decode_message(&mut &raw[..]) {
-        Ok(msg) => {
-            tracing::trace!(?msg, "processing peer message");
-            msg
-        }
-        Err(error) => {
-            tracing::info!(%error, "error decoding peer message");
-            return;
-        }
-    };
-    let request = match msg {
-        ZksMessage::GetBlockReplays(request) => request,
-        ZksMessage::BlockReplays(_) => {
+    let request = match conn.next().await {
+        Some(ZksMessage::GetBlockReplays(request)) => request,
+        Some(ZksMessage::BlockReplays(_)) => {
             tracing::info!("received unexpected block replay response; terminating");
             return;
         }
+        None => return,
     };
 
     // Stream records to the EN indefinitely.
@@ -324,6 +337,18 @@ async fn run_mn_connection<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone>
         .stream_from_forever(request.starting_block, HashMap::new());
     loop {
         tokio::select! {
+            // Biased because first branch always leads to early return. Makes sense to check it
+            // first.
+            biased;
+
+            msg = conn.next() => {
+                // No messages are expected from the peer after GetBlockReplays.
+                match msg {
+                    Some(msg) => tracing::info!(?msg, "received unexpected message from peer; terminating"),
+                    None => tracing::info!("peer connection closed; terminating"),
+                }
+                return;
+            }
             record = stream.next() => {
                 let Some(record) = record else {
                     // stream_from_forever only ends if storage closes.
@@ -335,17 +360,6 @@ async fn run_mn_connection<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone>
                     return;
                 }
             }
-            msg = conn.next() => {
-                // No messages are expected from the peer after GetBlockReplays.
-                match msg {
-                    Some(raw) => match ZksMessage::<P>::decode_message(&mut &raw[..]) {
-                        Ok(msg) => tracing::info!(?msg, "received unexpected message from peer; terminating"),
-                        Err(error) => tracing::info!(%error, "error decoding unexpected peer message; terminating"),
-                    },
-                    None => tracing::info!("peer connection closed; terminating"),
-                }
-                return;
-            }
         }
     }
 }
@@ -356,7 +370,7 @@ async fn run_mn_connection<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone>
 /// [`BlockReplays`] record to the local sequencer via `replay_sender` and advances
 /// `starting_block`.
 async fn run_en_connection<P: AnyZksProtocolVersion>(
-    mut conn: ProtocolConnection,
+    mut conn: impl Stream<Item = ZksMessage<P>> + Unpin,
     outbound_tx: mpsc::Sender<BytesMut>,
     starting_block: Arc<RwLock<BlockNumber>>,
     record_overrides: Vec<RecordOverride>,
@@ -369,20 +383,7 @@ async fn run_en_connection<P: AnyZksProtocolVersion>(
         return;
     }
 
-    loop {
-        let Some(raw) = conn.next().await else {
-            break;
-        };
-        let msg = match ZksMessage::<P>::decode_message(&mut &raw[..]) {
-            Ok(msg) => {
-                tracing::trace!(?msg, "processing peer message");
-                msg
-            }
-            Err(error) => {
-                tracing::info!(%error, "error decoding peer message");
-                break;
-            }
-        };
+    while let Some(msg) = conn.next().await {
         let response = match msg {
             ZksMessage::GetBlockReplays(_) => {
                 tracing::info!("ignoring request as local node is also waiting for records");
