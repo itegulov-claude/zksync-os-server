@@ -290,7 +290,7 @@ impl Stream for ZksConnection {
 /// Background task that drives a **main-node** side of a connection.
 ///
 /// Waits for a [`GetBlockReplays`] request from the EN, then streams replay records from
-/// storage to the EN indefinitely via `stream_from_forever`.
+/// storage to the EN indefinitely.
 async fn run_mn_connection<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone>(
     mut conn: ProtocolConnection,
     outbound_tx: mpsc::Sender<BytesMut>,
@@ -310,9 +310,12 @@ async fn run_mn_connection<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone>
             return;
         }
     };
-    let ZksMessage::GetBlockReplays(request) = msg else {
-        tracing::info!("received unexpected message type; terminating MN connection");
-        return;
+    let request = match msg {
+        ZksMessage::GetBlockReplays(request) => request,
+        ZksMessage::BlockReplays(_) => {
+            tracing::info!("received unexpected block replay response; terminating");
+            return;
+        }
     };
 
     // Stream records to the EN indefinitely.
@@ -326,14 +329,14 @@ async fn run_mn_connection<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone>
         }
     }
     // stream_from_forever only ends if storage closes.
-    tracing::info!("replay stream closed; terminating MN connection");
+    tracing::info!("replay stream closed; terminating");
 }
 
 /// Background task that drives an **external-node** side of a connection.
 ///
 /// Sends a [`GetBlockReplays`] request immediately, then forwards each received
 /// [`BlockReplays`] record to the local sequencer via `replay_sender` and advances
-/// `starting_block` so that a reconnect resumes from the right place.
+/// `starting_block`.
 async fn run_en_connection<P: AnyZksProtocolVersion>(
     mut conn: ProtocolConnection,
     outbound_tx: mpsc::Sender<BytesMut>,
@@ -362,9 +365,12 @@ async fn run_en_connection<P: AnyZksProtocolVersion>(
                 break;
             }
         };
-        let ZksMessage::BlockReplays(response) = msg else {
-            tracing::info!("received unexpected message type; terminating EN connection");
-            break;
+        let response = match msg {
+            ZksMessage::GetBlockReplays(_) => {
+                tracing::info!("ignoring request as local node is also waiting for records");
+                continue;
+            }
+            ZksMessage::BlockReplays(response) => response,
         };
         // todo: logic below relies on there being one record per message
         //       we can (and should) adapt it to handle multiple records in the future
