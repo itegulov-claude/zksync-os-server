@@ -322,14 +322,32 @@ async fn run_mn_connection<P: AnyZksProtocolVersion, Replay: ReadReplay + Clone>
     let mut stream = replay
         .clone()
         .stream_from_forever(request.starting_block, HashMap::new());
-    while let Some(record) = stream.next().await {
-        let encoded = ZksMessage::<P>::block_replays(vec![record]).encoded();
-        if outbound_tx.send(encoded).await.is_err() {
-            return;
+    loop {
+        tokio::select! {
+            record = stream.next() => {
+                let Some(record) = record else {
+                    // stream_from_forever only ends if storage closes.
+                    tracing::info!("replay stream closed; terminating");
+                    return;
+                };
+                let encoded = ZksMessage::<P>::block_replays(vec![record]).encoded();
+                if outbound_tx.send(encoded).await.is_err() {
+                    return;
+                }
+            }
+            msg = conn.next() => {
+                // No messages are expected from the peer after GetBlockReplays.
+                match msg {
+                    Some(raw) => match ZksMessage::<P>::decode_message(&mut &raw[..]) {
+                        Ok(msg) => tracing::info!(?msg, "received unexpected message from peer; terminating"),
+                        Err(error) => tracing::info!(%error, "error decoding unexpected peer message; terminating"),
+                    },
+                    None => tracing::info!("peer connection closed; terminating"),
+                }
+                return;
+            }
         }
     }
-    // stream_from_forever only ends if storage closes.
-    tracing::info!("replay stream closed; terminating");
 }
 
 /// Background task that drives an **external-node** side of a connection.
