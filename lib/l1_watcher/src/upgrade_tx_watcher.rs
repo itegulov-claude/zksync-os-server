@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use crate::factory_deps::load_factory_deps;
-use crate::util::ANVIL_L1_CHAIN_ID;
 use crate::watcher::{L1Watcher, L1WatcherError};
 use crate::{L1WatcherConfig, ProcessL1Event, util};
 use alloy::dyn_abi::SolType;
@@ -31,7 +30,6 @@ const UPGRADE_DATA_LOOKBEHIND_BLOCKS: u64 = 2_500_000;
 pub struct L1UpgradeTxWatcher {
     admin_contract_l1: Address,
 
-    provider_l1: DynProvider,
     provider_sl: DynProvider,
     /// Address of the bytecode supplier contract (used to detect published bytecode preimages)
     #[allow(dead_code)] // TODO: enable once bytecode supplier integration is ready
@@ -72,14 +70,12 @@ impl L1UpgradeTxWatcher {
         let last_l1_block = find_l1_block_by_protocol_version(zk_chain_l1.clone(), current_protocol_version.clone())
             .await
             .or_else(|err| {
-                // This may error on Anvil with `--load-state` - as it doesn't support `eth_call` even for recent blocks.
-                // We default to `0` in this case - `eth_getLogs` are still supported.
-                // Assert that we don't fallback on longer chains (e.g. Sepolia)
                 if current_l1_block > INITIAL_LOOKBEHIND_BLOCKS {
                     anyhow::bail!(
                         "Binary search failed with {err}. Cannot default starting block to zero for a long chain. Current L1 block number: {current_l1_block}. Limit: {INITIAL_LOOKBEHIND_BLOCKS}."
                     );
                 } else {
+                    tracing::warn!("Binary search for protocol version failed with {err}. Defaulting to block 0.");
                     Ok(0)
                 }
             })?;
@@ -98,7 +94,6 @@ impl L1UpgradeTxWatcher {
 
         let this = Self {
             admin_contract_l1: admin_l1,
-            provider_l1: zk_chain_l1.provider().clone(),
             provider_sl: zk_chain_sl.provider().clone(),
             bytecode_supplier_address,
             ctm_sl,
@@ -293,20 +288,11 @@ impl ProcessL1Event for L1UpgradeTxWatcher {
             return Ok(());
         }
 
-        // In localhost environment, we may want to test upgrades to non-live versions, but
-        // we don't want to allow them anywhere else.
         if !request.protocol_version.is_live() {
             tracing::warn!(
                 ?request.protocol_version,
                 "received a protocol version that is not marked as live"
             );
-            // Only allow non-live versions in localhost environment.
-            if self.provider_l1.get_chain_id().await? != ANVIL_L1_CHAIN_ID {
-                panic!(
-                    "Received an upgrade to a non-live protocol version: {:?}",
-                    request.protocol_version
-                );
-            }
         }
 
         let upgrade_info = self
