@@ -3,9 +3,10 @@ use crate::result::ToRpcResult;
 use alloy::primitives::{B256, BlockNumber, TxHash};
 use async_trait::async_trait;
 use jsonrpsee::core::RpcResult;
+use zksync_os_interface::traits::{PreimageSource, ReadStorage};
 use zksync_os_mini_merkle_tree::MiniMerkleTree;
 use zksync_os_rpc_api::unstable::UnstableApiServer;
-use zksync_os_storage_api::{PersistedBatch, RepositoryError};
+use zksync_os_storage_api::{PersistedBatch, RepositoryError, StateError};
 use zksync_os_types::L2_TO_L1_TREE_SIZE;
 
 pub struct UnstableNamespace<RpcStorage> {
@@ -59,6 +60,17 @@ impl<RpcStorage: ReadRpcStorage> UnstableNamespace<RpcStorage> {
 
         Ok(local_root)
     }
+
+    fn get_storage_value_impl(&self, block_number: u64, key: B256) -> UnstableResult<Option<B256>> {
+        let mut state = self.storage.state_view_at(block_number)?;
+        Ok(state.read(key))
+    }
+
+    fn get_preimage_impl(&self, hash: B256) -> UnstableResult<Option<Vec<u8>>> {
+        let latest_block = *self.storage.block_range_available().end();
+        let mut state = self.storage.state_view_at(latest_block)?;
+        Ok(state.get_preimage(hash))
+    }
 }
 
 #[async_trait]
@@ -70,6 +82,15 @@ impl<RpcStorage: ReadRpcStorage> UnstableApiServer for UnstableNamespace<RpcStor
 
     async fn get_local_root(&self, batch_number: u64) -> RpcResult<B256> {
         self.get_local_root_impl(batch_number).to_rpc_result()
+    }
+
+    async fn get_storage_value(&self, block_number: u64, key: B256) -> RpcResult<Option<B256>> {
+        self.get_storage_value_impl(block_number, key)
+            .to_rpc_result()
+    }
+
+    async fn get_preimage(&self, hash: B256) -> RpcResult<Option<Vec<u8>>> {
+        self.get_preimage_impl(hash).to_rpc_result()
     }
 }
 
@@ -85,6 +106,8 @@ pub enum UnstableError {
     BatchNotAvailableYet,
     #[error(transparent)]
     Batch(#[from] anyhow::Error),
+    #[error(transparent)]
+    State(#[from] StateError),
     /// Historical block could not be found on this node (e.g., pruned).
     #[error("historical block {0} is not available")]
     BlockNotAvailable(BlockNumber),

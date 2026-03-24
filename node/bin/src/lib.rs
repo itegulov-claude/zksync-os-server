@@ -89,7 +89,7 @@ use zksync_os_raft::{
 };
 use zksync_os_reth_compat::provider::ZkProviderFactory;
 use zksync_os_revm_consistency_checker::node::RevmConsistencyChecker;
-use zksync_os_rpc::{EthCallHandler, RpcStorage};
+use zksync_os_rpc::{EthCallHandler, RemoteForkClient, RpcStorage};
 use zksync_os_rpc_api::eth::EthApiClient;
 use zksync_os_sequencer::execution::block_context_provider::BlockContextProvider;
 use zksync_os_sequencer::execution::{
@@ -712,13 +712,23 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
 
     let persistent_batch_storage =
         ExecutedBatchStorage::new(&config.general_config.rocks_db_path.join(BATCH_DB_NAME));
-    let rpc_storage = RpcStorage::new(
+    let remote_fork_storage = config
+        .general_config
+        .main_node_rpc_url
+        .as_deref()
+        .map(RemoteForkClient::new)
+        .transpose()
+        .expect("failed to initialize remote fork storage")
+        .map(Arc::new)
+        .map(|client| client as Arc<_>);
+    let rpc_storage = RpcStorage::with_remote_fork(
         repositories.clone(),
         block_replay_storage.clone(),
         finality_storage.clone(),
         persistent_batch_storage.clone(),
         state.clone(),
         tree_for_rpc,
+        remote_fork_storage,
     );
     runtime.spawn_critical_task(
         "l1 batch persist watcher",

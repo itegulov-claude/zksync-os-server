@@ -1,8 +1,11 @@
 use alloy::eips::{BlockHashOrNumber, BlockId, BlockNumberOrTag};
-use alloy::primitives::BlockNumber;
+use alloy::primitives::{B256, BlockNumber};
+use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
+use std::sync::Mutex;
 use std::{ops::RangeInclusive, sync::Arc};
 use zksync_os_interface::traits::{PreimageSource, ReadStorage};
 use zksync_os_merkle_tree_api::MerkleTreeProver;
+use zksync_os_rpc_api::unstable::UnstableApiClient;
 use zksync_os_storage_api::{
     ReadBatch, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, RepositoryBlock,
     RepositoryError, RepositoryResult, StateError, StateResult, ViewState,
@@ -115,6 +118,7 @@ pub struct RpcStorage<Repository, Replay, Finality, Batch, StateHistory> {
     batch: Batch,
     state: StateHistory,
     tree: Arc<dyn MerkleTreeProver>,
+    remote_fork: Option<Arc<dyn RemoteForkSource>>,
 }
 
 impl<Repository, Replay, Finality, Batch, StateHistory> std::fmt::Debug
@@ -136,6 +140,26 @@ impl<Repository, Replay, Finality, Batch, StateHistory>
         state: StateHistory,
         tree: Arc<dyn MerkleTreeProver>,
     ) -> Self {
+        Self::with_remote_fork(
+            repository,
+            replay_storage,
+            finality,
+            batch,
+            state,
+            tree,
+            None,
+        )
+    }
+
+    pub fn with_remote_fork(
+        repository: Repository,
+        replay_storage: Replay,
+        finality: Finality,
+        batch: Batch,
+        state: StateHistory,
+        tree: Arc<dyn MerkleTreeProver>,
+        remote_fork: Option<Arc<dyn RemoteForkSource>>,
+    ) -> Self {
         Self {
             repository,
             replay_storage,
@@ -143,6 +167,7 @@ impl<Repository, Replay, Finality, Batch, StateHistory>
             batch,
             state,
             tree,
+            remote_fork,
         }
     }
 }
@@ -192,7 +217,23 @@ impl<
         &self,
         block_number: BlockNumber,
     ) -> StateResult<impl ReadStorage + PreimageSource + Clone> {
-        self.state.state_view_at(block_number)
+        let local_state = match self.state.state_view_at(block_number) {
+            Ok(state) => Some(state),
+            Err(err) => {
+                if self.remote_fork.is_none() {
+                    return Err(err);
+                }
+                match err {
+                    StateError::Compacted(_) | StateError::NotFound(_) => None,
+                }
+            }
+        };
+
+        Ok(ForkedStateView {
+            local_state,
+            block_number,
+            remote_fork: self.remote_fork.clone(),
+        })
     }
 
     fn block_range_available(&self) -> RangeInclusive<u64> {
@@ -214,4 +255,193 @@ pub enum RpcStorageError {
     Repository(#[from] RepositoryError),
     #[error(transparent)]
     State(#[from] StateError),
+}
+
+pub trait RemoteForkSource: std::fmt::Debug + Send + Sync {
+    fn read_value(&self, block_number: BlockNumber, key: B256) -> StateResult<Option<B256>>;
+    fn read_preimage(&self, hash: B256) -> StateResult<Option<Vec<u8>>>;
+}
+
+#[derive(Debug)]
+pub struct RemoteForkClient {
+    client: HttpClient,
+    runtime: Mutex<tokio::runtime::Runtime>,
+}
+
+impl RemoteForkClient {
+    pub fn new(url: &str) -> anyhow::Result<Self> {
+        let client = HttpClientBuilder::new().build(url)?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        Ok(Self {
+            client,
+            runtime: Mutex::new(runtime),
+        })
+    }
+}
+
+impl RemoteForkSource for RemoteForkClient {
+    fn read_value(&self, block_number: BlockNumber, key: B256) -> StateResult<Option<B256>> {
+        let runtime = self
+            .runtime
+            .lock()
+            .expect("remote fork runtime lock is poisoned");
+        runtime
+            .block_on(self.client.get_storage_value(block_number, key))
+            .map_err(|err| {
+                tracing::warn!(block_number, ?key, %err, "failed to fetch remote fork storage value");
+                StateError::NotFound(block_number)
+            })
+    }
+
+    fn read_preimage(&self, hash: B256) -> StateResult<Option<Vec<u8>>> {
+        let runtime = self
+            .runtime
+            .lock()
+            .expect("remote fork runtime lock is poisoned");
+        runtime
+            .block_on(self.client.get_preimage(hash))
+            .map_err(|err| {
+                tracing::warn!(?hash, %err, "failed to fetch remote fork preimage");
+                StateError::NotFound(0)
+            })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ForkedStateView<Local> {
+    local_state: Option<Local>,
+    block_number: BlockNumber,
+    remote_fork: Option<Arc<dyn RemoteForkSource>>,
+}
+
+impl<Local: ViewState> ReadStorage for ForkedStateView<Local> {
+    fn read(&mut self, key: B256) -> Option<B256> {
+        if let Some(local_state) = &mut self.local_state
+            && let Some(value) = local_state.read(key)
+        {
+            return Some(value);
+        }
+
+        self.remote_fork.as_ref().and_then(|remote_fork| {
+            remote_fork
+                .read_value(self.block_number, key)
+                .ok()
+                .flatten()
+        })
+    }
+}
+
+impl<Local: ViewState> PreimageSource for ForkedStateView<Local> {
+    fn get_preimage(&mut self, hash: B256) -> Option<Vec<u8>> {
+        if let Some(local_state) = &mut self.local_state
+            && let Some(preimage) = local_state.get_preimage(hash)
+        {
+            return Some(preimage);
+        }
+
+        self.remote_fork
+            .as_ref()
+            .and_then(|remote_fork| remote_fork.read_preimage(hash).ok().flatten())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ForkedStateView, RemoteForkSource};
+    use alloy::primitives::B256;
+    use std::collections::HashMap;
+    use zksync_os_interface::traits::{PreimageSource, ReadStorage};
+    use zksync_os_storage_api::StateResult;
+
+    #[derive(Clone, Debug)]
+    struct TestLocalState {
+        storage: HashMap<B256, B256>,
+        preimages: HashMap<B256, Vec<u8>>,
+    }
+
+    impl ReadStorage for TestLocalState {
+        fn read(&mut self, key: B256) -> Option<B256> {
+            self.storage.get(&key).copied()
+        }
+    }
+
+    impl PreimageSource for TestLocalState {
+        fn get_preimage(&mut self, hash: B256) -> Option<Vec<u8>> {
+            self.preimages.get(&hash).cloned()
+        }
+    }
+
+    #[derive(Debug)]
+    struct TestRemoteFork {
+        storage: HashMap<(u64, B256), B256>,
+        preimages: HashMap<B256, Vec<u8>>,
+    }
+
+    impl RemoteForkSource for TestRemoteFork {
+        fn read_value(&self, block_number: u64, key: B256) -> StateResult<Option<B256>> {
+            Ok(self.storage.get(&(block_number, key)).copied())
+        }
+
+        fn read_preimage(&self, hash: B256) -> StateResult<Option<Vec<u8>>> {
+            Ok(self.preimages.get(&hash).cloned())
+        }
+    }
+
+    #[test]
+    fn falls_back_to_remote_storage_when_local_value_is_missing() {
+        let key = B256::with_last_byte(1);
+        let remote_value = B256::with_last_byte(2);
+        let remote = TestRemoteFork {
+            storage: HashMap::from([((7, key), remote_value)]),
+            preimages: HashMap::new(),
+        };
+        let mut view = ForkedStateView {
+            local_state: Some(TestLocalState {
+                storage: HashMap::new(),
+                preimages: HashMap::new(),
+            }),
+            block_number: 7,
+            remote_fork: Some(std::sync::Arc::new(remote)),
+        };
+
+        assert_eq!(view.read(key), Some(remote_value));
+    }
+
+    #[test]
+    fn falls_back_to_remote_preimage_without_local_state() {
+        let hash = B256::with_last_byte(3);
+        let preimage = vec![1, 2, 3];
+        let remote = TestRemoteFork {
+            storage: HashMap::new(),
+            preimages: HashMap::from([(hash, preimage.clone())]),
+        };
+        let mut view = ForkedStateView::<TestLocalState> {
+            local_state: None,
+            block_number: 11,
+            remote_fork: Some(std::sync::Arc::new(remote)),
+        };
+
+        assert_eq!(view.get_preimage(hash), Some(preimage));
+    }
+
+    #[test]
+    fn preserves_local_values_when_available() {
+        let key = B256::with_last_byte(9);
+        let local_value = B256::with_last_byte(10);
+        let mut view = ForkedStateView {
+            local_state: Some(TestLocalState {
+                storage: HashMap::from([(key, local_value)]),
+                preimages: HashMap::new(),
+            }),
+            block_number: 0,
+            remote_fork: Some(std::sync::Arc::new(TestRemoteFork {
+                storage: HashMap::from([((0, key), B256::with_last_byte(11))]),
+                preimages: HashMap::new(),
+            })),
+        };
+
+        assert_eq!(view.read(key), Some(local_value));
+    }
 }

@@ -11,4 +11,10 @@ pub trait UnstableApi {
 
     #[method(name = "getLocalRoot")]
     async fn get_local_root(&self, batch_number: u64) -> RpcResult<B256>;
+
+    #[method(name = "getStorageValue")]
+    async fn get_storage_value(&self, block_number: u64, key: B256) -> RpcResult<Option<B256>>;
+
+    #[method(name = "getPreimage")]
+    async fn get_preimage(&self, hash: B256) -> RpcResult<Option<Vec<u8>>>;
 }

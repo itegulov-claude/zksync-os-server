@@ -76,3 +76,8 @@ The `ephemeral` setting is part of the general config and can be set like any ot
 ```
 general_ephemeral=true cargo run --release
 ```
+
+If you start an external node against a remote RPC by setting `general_main_node_rpc_url`, the
+node now uses that RPC as a remote fork source for JSON-RPC simulations. This allows
+`eth_call`, `eth_estimateGas`, and related simulation flows to fetch missing state values and
+preimages from the upstream node instead of requiring the entire state to be present locally first.
