@@ -89,7 +89,10 @@ use zksync_os_raft::{
 };
 use zksync_os_reth_compat::provider::ZkProviderFactory;
 use zksync_os_revm_consistency_checker::node::RevmConsistencyChecker;
-use zksync_os_rpc::{EthCallHandler, RemoteForkClient, RpcStorage};
+use zksync_os_rpc::{
+    EthCallHandler, ForkedReplayStorage, ForkedRepository, ForkedStateHistory, RemoteForkClient,
+    RpcStorage,
+};
 use zksync_os_rpc_api::eth::EthApiClient;
 use zksync_os_sequencer::execution::block_context_provider::BlockContextProvider;
 use zksync_os_sequencer::execution::{
@@ -278,7 +281,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     .await;
 
     tracing::info!("Initializing RepositoryManager");
-    let repositories = RepositoryManager::new(
+    let repository_manager = RepositoryManager::new(
         config.general_config.blocks_to_retain_in_memory,
         config.general_config.rocks_db_path.join(REPOSITORY_DB_NAME),
         &genesis,
@@ -311,6 +314,19 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     .expect("failed to init CommittedBatchProvider");
 
     let state = State::new(&config.general_config, &genesis).await;
+    let remote_fork_storage = config
+        .general_config
+        .fork_rpc_url
+        .as_deref()
+        .map(RemoteForkClient::new)
+        .transpose()
+        .expect("failed to initialize remote fork storage")
+        .map(Arc::new)
+        .map(|client| client as Arc<_>);
+    let repositories = ForkedRepository::new(repository_manager, remote_fork_storage.clone());
+    let block_replay_storage =
+        ForkedReplayStorage::new(block_replay_storage, remote_fork_storage.clone());
+    let state = ForkedStateHistory::new(state, remote_fork_storage.clone());
 
     tracing::info!("Initializing mempools");
     let zk_provider_factory = ZkProviderFactory::new(state.clone(), repositories.clone(), chain_id);
@@ -367,7 +383,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         //       once refactored we can get rid of `main_node_rpc_url` config param
         let last_matching_block =
             if let Some(main_node_rpc_url) = &config.general_config.main_node_rpc_url {
-                find_last_matching_main_node_block(&repositories, main_node_rpc_url)
+                find_last_matching_main_node_block(&repositories.local(), main_node_rpc_url)
                     .await
                     .expect("Failed to find last matching block with main node")
             } else {
@@ -712,23 +728,13 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
 
     let persistent_batch_storage =
         ExecutedBatchStorage::new(&config.general_config.rocks_db_path.join(BATCH_DB_NAME));
-    let remote_fork_storage = config
-        .general_config
-        .fork_rpc_url
-        .as_deref()
-        .map(RemoteForkClient::new)
-        .transpose()
-        .expect("failed to initialize remote fork storage")
-        .map(Arc::new)
-        .map(|client| client as Arc<_>);
-    let rpc_storage = RpcStorage::with_remote_fork(
+    let rpc_storage = RpcStorage::new(
         repositories.clone(),
         block_replay_storage.clone(),
         finality_storage.clone(),
         persistent_batch_storage.clone(),
         state.clone(),
         tree_for_rpc,
-        remote_fork_storage,
     );
     runtime.spawn_critical_task(
         "l1 batch persist watcher",
@@ -746,12 +752,12 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     let repositories_clone = repositories.clone();
     runtime.spawn_critical_task(
         "repository persist loop",
-        repositories_clone.run_persist_loop(),
+        repositories_clone.local().run_persist_loop(),
     );
     let state_clone = state.clone();
     runtime.spawn_critical_task(
         "state compact loop",
-        state_clone.compact_periodically_optional(),
+        state_clone.local().compact_periodically_optional(),
     );
 
     if node_role.is_main() {

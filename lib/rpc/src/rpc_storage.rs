@@ -9,7 +9,7 @@ use zksync_os_rpc_api::unstable::UnstableApiClient;
 use zksync_os_storage_api::{
     ReadBatch, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, ReplayRecord,
     RepositoryBlock, RepositoryError, RepositoryResult, StateError, StateResult, StoredTxData,
-    TxMeta, ViewState, notifications::SubscribeToBlocks,
+    TxMeta, ViewState, WriteReplay, WriteRepository, WriteState, notifications::SubscribeToBlocks,
 };
 use zksync_os_types::{ZkReceiptEnvelope, ZkTransaction};
 
@@ -114,13 +114,11 @@ pub trait ReadRpcStorage: ReadStateHistory + Clone {
 #[derive(Clone)]
 pub struct RpcStorage<Repository, Replay, Finality, Batch, StateHistory> {
     repository: Repository,
-    forked_repository: ForkedRepository<Repository>,
-    forked_replay_storage: ForkedReplayStorage<Replay>,
+    replay_storage: Replay,
     finality: Finality,
     batch: Batch,
     state: StateHistory,
     tree: Arc<dyn MerkleTreeProver>,
-    remote_fork: Option<Arc<dyn RemoteForkSource>>,
 }
 
 impl<Repository, Replay, Finality, Batch, StateHistory> std::fmt::Debug
@@ -131,7 +129,7 @@ impl<Repository, Replay, Finality, Batch, StateHistory> std::fmt::Debug
     }
 }
 
-impl<Repository: Clone, Replay: Clone, Finality, Batch, StateHistory>
+impl<Repository, Replay, Finality, Batch, StateHistory>
     RpcStorage<Repository, Replay, Finality, Batch, StateHistory>
 {
     pub fn new(
@@ -142,43 +140,13 @@ impl<Repository: Clone, Replay: Clone, Finality, Batch, StateHistory>
         state: StateHistory,
         tree: Arc<dyn MerkleTreeProver>,
     ) -> Self {
-        Self::with_remote_fork(
+        Self {
             repository,
             replay_storage,
             finality,
             batch,
             state,
             tree,
-            None,
-        )
-    }
-
-    pub fn with_remote_fork(
-        repository: Repository,
-        replay_storage: Replay,
-        finality: Finality,
-        batch: Batch,
-        state: StateHistory,
-        tree: Arc<dyn MerkleTreeProver>,
-        remote_fork: Option<Arc<dyn RemoteForkSource>>,
-    ) -> Self {
-        let forked_repository = ForkedRepository {
-            local: repository.clone(),
-            remote_fork: remote_fork.clone(),
-        };
-        let forked_replay_storage = ForkedReplayStorage {
-            local: replay_storage.clone(),
-            remote_fork: remote_fork.clone(),
-        };
-        Self {
-            repository,
-            forked_repository,
-            forked_replay_storage,
-            finality,
-            batch,
-            state,
-            tree,
-            remote_fork,
         }
     }
 }
@@ -192,7 +160,7 @@ impl<
 > ReadRpcStorage for RpcStorage<Repository, Replay, Finality, Batch, StateHistory>
 {
     fn repository(&self) -> &dyn ReadRepository {
-        &self.forked_repository
+        &self.repository
     }
 
     fn block_subscriptions(&self) -> &dyn SubscribeToBlocks {
@@ -200,7 +168,7 @@ impl<
     }
 
     fn replay_storage(&self) -> &dyn ReadReplay {
-        &self.forked_replay_storage
+        &self.replay_storage
     }
 
     fn finality(&self) -> &dyn ReadFinality {
@@ -228,23 +196,7 @@ impl<
         &self,
         block_number: BlockNumber,
     ) -> StateResult<impl ReadStorage + PreimageSource + Clone> {
-        let local_state = match self.state.state_view_at(block_number) {
-            Ok(state) => Some(state),
-            Err(err) => {
-                if self.remote_fork.is_none() {
-                    return Err(err);
-                }
-                match err {
-                    StateError::Compacted(_) | StateError::NotFound(_) => None,
-                }
-            }
-        };
-
-        Ok(ForkedStateView {
-            local_state,
-            block_number,
-            remote_fork: self.remote_fork.clone(),
-        })
+        self.state.state_view_at(block_number)
     }
 
     fn block_range_available(&self) -> RangeInclusive<u64> {
@@ -288,9 +240,22 @@ pub trait RemoteForkSource: std::fmt::Debug + Send + Sync {
 }
 
 #[derive(Clone, Debug)]
-struct ForkedRepository<Local> {
+pub struct ForkedRepository<Local> {
     local: Local,
     remote_fork: Option<Arc<dyn RemoteForkSource>>,
+}
+
+impl<Local> ForkedRepository<Local> {
+    pub fn new(local: Local, remote_fork: Option<Arc<dyn RemoteForkSource>>) -> Self {
+        Self { local, remote_fork }
+    }
+
+    pub fn local(&self) -> Local
+    where
+        Local: Clone,
+    {
+        self.local.clone()
+    }
 }
 
 impl<Local: ReadRepository> ReadRepository for ForkedRepository<Local> {
@@ -386,10 +351,42 @@ impl<Local: ReadRepository> ReadRepository for ForkedRepository<Local> {
     }
 }
 
+impl<Local: WriteRepository> WriteRepository for ForkedRepository<Local> {
+    async fn populate(
+        &self,
+        block_output: zksync_os_interface::types::BlockOutput,
+        transactions: Vec<ZkTransaction>,
+    ) -> RepositoryResult<()> {
+        self.local.populate(block_output, transactions).await
+    }
+}
+
+impl<Local: SubscribeToBlocks> SubscribeToBlocks for ForkedRepository<Local> {
+    fn subscribe_to_blocks(
+        &self,
+    ) -> tokio::sync::broadcast::Receiver<zksync_os_storage_api::notifications::BlockNotification>
+    {
+        self.local.subscribe_to_blocks()
+    }
+}
+
 #[derive(Clone, Debug)]
-struct ForkedReplayStorage<Local> {
+pub struct ForkedReplayStorage<Local> {
     local: Local,
     remote_fork: Option<Arc<dyn RemoteForkSource>>,
+}
+
+impl<Local> ForkedReplayStorage<Local> {
+    pub fn new(local: Local, remote_fork: Option<Arc<dyn RemoteForkSource>>) -> Self {
+        Self { local, remote_fork }
+    }
+
+    pub fn local(&self) -> Local
+    where
+        Local: Clone,
+    {
+        self.local.clone()
+    }
 }
 
 impl<Local: ReadReplay> ReadReplay for ForkedReplayStorage<Local> {
@@ -423,6 +420,92 @@ impl<Local: ReadReplay> ReadReplay for ForkedReplayStorage<Local> {
                 || self.local.latest_record(),
                 |remote| remote.max(self.local.latest_record()),
             )
+    }
+}
+
+impl<Local: WriteReplay> WriteReplay for ForkedReplayStorage<Local> {
+    fn write(
+        &self,
+        record: alloy::primitives::Sealed<ReplayRecord>,
+        override_allowed: bool,
+    ) -> bool {
+        self.local.write(record, override_allowed)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ForkedStateHistory<Local> {
+    local: Local,
+    remote_fork: Option<Arc<dyn RemoteForkSource>>,
+}
+
+impl<Local> ForkedStateHistory<Local> {
+    pub fn new(local: Local, remote_fork: Option<Arc<dyn RemoteForkSource>>) -> Self {
+        Self { local, remote_fork }
+    }
+
+    pub fn local(&self) -> Local
+    where
+        Local: Clone,
+    {
+        self.local.clone()
+    }
+}
+
+impl<Local: ReadStateHistory> ReadStateHistory for ForkedStateHistory<Local> {
+    fn state_view_at(
+        &self,
+        block_number: BlockNumber,
+    ) -> StateResult<impl ReadStorage + PreimageSource + Clone> {
+        let local_state = match self.local.state_view_at(block_number) {
+            Ok(state) => Some(state),
+            Err(err) => {
+                if self.remote_fork.is_none() {
+                    return Err(err);
+                }
+                match err {
+                    StateError::Compacted(_) | StateError::NotFound(_) => None,
+                }
+            }
+        };
+
+        Ok(ForkedStateView {
+            local_state,
+            block_number,
+            remote_fork: self.remote_fork.clone(),
+        })
+    }
+
+    fn block_range_available(&self) -> RangeInclusive<u64> {
+        let local_range = self.local.block_range_available();
+        let latest_remote_block = self
+            .remote_fork
+            .as_ref()
+            .and_then(|remote| remote.get_latest_block());
+        let range_start = if latest_remote_block.is_some() {
+            0
+        } else {
+            *local_range.start()
+        };
+        let range_end =
+            latest_remote_block.map_or(*local_range.end(), |remote| remote.max(*local_range.end()));
+        range_start..=range_end
+    }
+}
+
+impl<Local: WriteState> WriteState for ForkedStateHistory<Local> {
+    fn add_block_result<'a, J>(
+        &self,
+        block_number: u64,
+        storage_diffs: Vec<zksync_os_interface::types::StorageWrite>,
+        new_preimages: J,
+        override_allowed: bool,
+    ) -> anyhow::Result<()>
+    where
+        J: IntoIterator<Item = (B256, &'a Vec<u8>)>,
+    {
+        self.local
+            .add_block_result(block_number, storage_diffs, new_preimages, override_allowed)
     }
 }
 
