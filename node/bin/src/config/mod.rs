@@ -1,8 +1,9 @@
 pub use self::cli::ConfigArgs;
-use self::util::{SecretKeyDeserializer, SignerConfigDeserializer, resolve_network_interface};
+use self::util::{SecretKeyDeserializer, SignerConfigDeserializer};
 use crate::{command_source::RebuildOptions, default_protocol_version::DEFAULT_ROCKS_DB_PATH};
 use alloy::primitives::{Address, Bytes, U128};
 use num::{BigInt, BigUint, rational::Ratio};
+use reth_net_nat::net_if::resolve_net_if_ip;
 use reth_network_peers::TrustedPeer;
 use serde::{Deserialize, Serialize};
 use smart_config::metadata::{SizeUnit, TimeUnit};
@@ -12,8 +13,8 @@ use smart_config::{
     EtherAmount, ParseErrors, Serde, de::Delimited, metadata::EtherUnit,
 };
 use std::collections::{HashMap, HashSet};
-use std::net::Ipv4Addr;
-use std::{convert::TryFrom, path::PathBuf, time::Duration};
+use std::net::{IpAddr, Ipv4Addr};
+use std::{path::PathBuf, time::Duration};
 use zksync_os_batch_verification;
 use zksync_os_l1_sender::commands::commit::CommitCommand;
 use zksync_os_l1_sender::commands::execute::ExecuteCommand;
@@ -277,8 +278,8 @@ pub struct NetworkConfig {
     #[config(default_t = Ipv4Addr::UNSPECIFIED, with = Serde![str])]
     pub address: Ipv4Addr,
     /// Optional networking interface override. If set, this is used instead of `network.address`.
-    /// Accepts either a literal IPv4 address such as `172.16.1.12` or an interface name such as
-    /// `eth0`.
+    /// The interface IP is resolved at startup; for example, `eth0` may resolve to a private LAN
+    /// address such as `172.16.1.12`.
     #[config(default_t = None)]
     pub interface: Option<String>,
     /// Port to use for Node Discovery Protocol v5 (discv5) and RLPx Transport Protocol (rlpx).
@@ -296,12 +297,19 @@ pub struct NetworkConfig {
 }
 
 impl NetworkConfig {
-    fn resolved_address(&self) -> Result<Ipv4Addr, String> {
-        self.interface
-            .as_deref()
-            .map(resolve_network_interface)
-            .transpose()
-            .map(|interface_ip| interface_ip.unwrap_or(self.address))
+    fn resolved_address(&self) -> Ipv4Addr {
+        let Some(interface) = self.interface.as_deref() else {
+            return self.address;
+        };
+
+        match resolve_net_if_ip(interface).unwrap_or_else(|err| {
+            panic!("failed to resolve network interface '{interface}': {err}")
+        }) {
+            IpAddr::V4(ip) => ip,
+            IpAddr::V6(ip) => panic!(
+                "failed to resolve network interface '{interface}': resolved to unsupported IPv6 address {ip}"
+            ),
+        }
     }
 }
 
@@ -1013,18 +1021,16 @@ pub struct FeeConfig {
     pub native_price_override: Option<U128>,
 }
 
-impl TryFrom<NetworkConfig> for zksync_os_network::config::NetworkConfig {
-    type Error = String;
-
-    fn try_from(value: NetworkConfig) -> Result<Self, Self::Error> {
-        Ok(Self {
-            secret_key: value.secret_key.ok_or_else(|| {
-                "`network.secret_key` is required for running p2p networking stack".to_owned()
-            })?,
-            address: value.resolved_address()?,
+impl From<NetworkConfig> for zksync_os_network::config::NetworkConfig {
+    fn from(value: NetworkConfig) -> Self {
+        Self {
+            secret_key: value
+                .secret_key
+                .expect("`network.secret_key` is required for running p2p networking stack"),
+            address: value.resolved_address(),
             port: value.port,
             boot_nodes: value.boot_nodes,
-        })
+        }
     }
 }
 
@@ -1278,7 +1284,14 @@ impl From<FeeConfig> for zksync_os_sequencer::execution::FeeConfig {
 #[cfg(test)]
 mod tests {
     use super::NetworkConfig;
-    use std::{convert::TryFrom, net::Ipv4Addr};
+    use std::net::Ipv4Addr;
+
+    fn loopback_interface() -> &'static str {
+        ["lo", "lo0"]
+            .into_iter()
+            .find(|interface| super::resolve_net_if_ip(interface).is_ok())
+            .expect("expected a loopback interface")
+    }
 
     fn network_config(interface: Option<&str>) -> NetworkConfig {
         NetworkConfig {
@@ -1293,20 +1306,18 @@ mod tests {
 
     #[test]
     fn network_interface_overrides_address() {
-        let config =
-            zksync_os_network::config::NetworkConfig::try_from(network_config(Some("172.16.1.12")))
-                .unwrap();
+        let config = zksync_os_network::config::NetworkConfig::from(network_config(Some(
+            loopback_interface(),
+        )));
 
-        assert_eq!(config.address, Ipv4Addr::new(172, 16, 1, 12));
+        assert_eq!(config.address, Ipv4Addr::LOCALHOST);
     }
 
     #[test]
-    fn invalid_network_interface_fails_validation() {
-        let err = zksync_os_network::config::NetworkConfig::try_from(network_config(Some(
+    #[should_panic(expected = "failed to resolve network interface 'definitely-missing-if'")]
+    fn invalid_network_interface_panics() {
+        let _ = zksync_os_network::config::NetworkConfig::from(network_config(Some(
             "definitely-missing-if",
-        )))
-        .unwrap_err();
-
-        assert!(err.contains("failed to resolve network interface 'definitely-missing-if'"));
+        )));
     }
 }

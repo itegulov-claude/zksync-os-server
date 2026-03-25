@@ -1,12 +1,10 @@
 use alloy::primitives::B256;
 use alloy::signers::k256::ecdsa::SigningKey;
-use reth_net_nat::net_if::resolve_net_if_ip;
 use serde::Deserialize;
 use serde_json::Value;
 use smart_config::ErrorWithOrigin;
 use smart_config::de::{DeserializeContext, DeserializeParam};
 use smart_config::metadata::{BasicTypes, ParamMetadata};
-use std::net::{IpAddr, Ipv4Addr};
 use zksync_os_network::SecretKey;
 use zksync_os_operator_signer::SignerConfig;
 
@@ -105,24 +103,8 @@ impl DeserializeParam<SecretKey> for SecretKeyDeserializer {
     }
 }
 
-pub fn resolve_network_interface(interface: &str) -> Result<Ipv4Addr, String> {
-    if let Ok(ip) = interface.parse::<Ipv4Addr>() {
-        return Ok(ip);
-    }
-
-    match resolve_net_if_ip(interface)
-        .map_err(|err| format!("failed to resolve network interface '{interface}': {err}"))?
-    {
-        IpAddr::V4(ip) => Ok(ip),
-        IpAddr::V6(ip) => Err(format!(
-            "failed to resolve network interface '{interface}': resolved to unsupported IPv6 address {ip}"
-        )),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::resolve_network_interface;
     use reth_network_peers::TrustedPeer;
     use smart_config::{
         ConfigRepository, ConfigSchema, DescribeConfig, DeserializeConfig, Environment, Serde,
@@ -151,18 +133,10 @@ mod tests {
     }
 
     #[test]
-    fn network_interface_accepts_ipv4_addresses() {
-        assert_eq!(
-            resolve_network_interface("172.16.1.12").unwrap(),
-            Ipv4Addr::new(172, 16, 1, 12)
-        );
-    }
-
-    #[test]
     fn network_interface_is_a_separate_config_field() {
-        let config = parse_config([("NETWORK_INTERFACE", "172.16.1.12")]);
+        let config = parse_config([("NETWORK_INTERFACE", "eth0")]);
         assert_eq!(config.address, Ipv4Addr::UNSPECIFIED);
-        assert_eq!(config.interface.as_deref(), Some("172.16.1.12"));
+        assert_eq!(config.interface.as_deref(), Some("eth0"));
     }
 
     #[test]
