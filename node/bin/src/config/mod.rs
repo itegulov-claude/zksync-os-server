@@ -1284,7 +1284,11 @@ impl From<FeeConfig> for zksync_os_sequencer::execution::FeeConfig {
 #[cfg(test)]
 mod tests {
     use super::NetworkConfig;
+    use smart_config::{ConfigRepository, ConfigSchema, DescribeConfig, Environment};
     use std::net::Ipv4Addr;
+
+    const TEST_SECRET_KEY: &str =
+        "0x1111111111111111111111111111111111111111111111111111111111111111";
 
     fn loopback_interface() -> &'static str {
         ["lo", "lo0"]
@@ -1293,31 +1297,48 @@ mod tests {
             .expect("expected a loopback interface")
     }
 
-    fn network_config(interface: Option<&str>) -> NetworkConfig {
-        NetworkConfig {
-            enabled: true,
-            secret_key: Some(zksync_os_network::rng_secret_key()),
-            address: Ipv4Addr::new(10, 0, 0, 1),
-            interface: interface.map(str::to_owned),
-            port: 3060,
-            boot_nodes: vec![],
-        }
+    fn parse_network_config<const N: usize>(env_vars: [(&str, &str); N]) -> NetworkConfig {
+        let schema = ConfigSchema::new(&NetworkConfig::DESCRIPTION, "network");
+        let repo = ConfigRepository::new(&schema).with(Environment::from_iter("", env_vars));
+        repo.single::<NetworkConfig>().unwrap().parse().unwrap()
     }
 
     #[test]
-    fn network_interface_overrides_address() {
-        let config = zksync_os_network::config::NetworkConfig::from(network_config(Some(
-            loopback_interface(),
-        )));
+    fn network_interface_is_a_separate_field_and_overrides_address() {
+        let config = parse_network_config([
+            ("NETWORK_SECRET_KEY", TEST_SECRET_KEY),
+            ("NETWORK_ADDRESS", "10.0.0.1"),
+            ("NETWORK_INTERFACE", loopback_interface()),
+        ]);
+        assert_eq!(config.address, Ipv4Addr::new(10, 0, 0, 1));
+        assert_eq!(config.interface.as_deref(), Some(loopback_interface()));
 
-        assert_eq!(config.address, Ipv4Addr::LOCALHOST);
+        let runtime_config = zksync_os_network::config::NetworkConfig::from(config);
+        assert_eq!(runtime_config.address, Ipv4Addr::LOCALHOST);
+    }
+
+    #[test]
+    fn network_boot_nodes_accept_dns_names() {
+        let config = parse_network_config([(
+            "NETWORK_BOOT_NODES",
+            "enode://6f8a80d14311c39f35f516fa664deaaaa13e85b2f7493f37f6144d86991ec012937307647bd3b9a82abe2974e1407241d54947bbb39763a4cac9f77166ad92a0@localhost:30303?discport=30301",
+        )]);
+
+        assert_eq!(config.boot_nodes.len(), 1);
+        assert_eq!(config.boot_nodes[0].host.to_string(), "localhost");
+        let record = config.boot_nodes[0].resolve_blocking().unwrap();
+        assert!(record.address.is_loopback());
+        assert_eq!(record.tcp_port, 30303);
+        assert_eq!(record.udp_port, 30301);
     }
 
     #[test]
     #[should_panic(expected = "failed to resolve network interface 'definitely-missing-if'")]
     fn invalid_network_interface_panics() {
-        let _ = zksync_os_network::config::NetworkConfig::from(network_config(Some(
-            "definitely-missing-if",
-        )));
+        let _ = zksync_os_network::config::NetworkConfig::from(parse_network_config([
+            ("NETWORK_SECRET_KEY", TEST_SECRET_KEY),
+            ("NETWORK_INTERFACE", "definitely-missing-if"),
+            ("NETWORK_ADDRESS", "10.0.0.1"),
+        ]));
     }
 }
