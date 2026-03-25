@@ -21,6 +21,7 @@ zksync_os_rocksdb.workspace = true
 zksync_os_rpc.workspace = true
 zksync_os_rpc_api.workspace = true
 zksync_os_storage.workspace = true
+zksync_os_storage_fork.workspace = true
 zksync_os_storage_api.workspace = true
 zksync_os_types.workspace = true
 zksync_os_priority_tree.workspace = true

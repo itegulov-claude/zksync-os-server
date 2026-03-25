@@ -16,6 +16,7 @@ members = [
     "lib/sequencer",
     "lib/state",
     "lib/storage",
+    "lib/storage_fork",
     "lib/storage_api",
     "lib/types",
     "node/bin",
@@ -264,6 +265,7 @@ zksync_os_sequencer = { version = "=0.18.0", path = "lib/sequencer" }
 zksync_os_state = { version = "=0.18.0", path = "lib/state" }
 zksync_os_state_full_diffs = { version = "=0.18.0", path = "lib/state_full_diffs" }
 zksync_os_storage = { version = "=0.18.0", path = "lib/storage" }
+zksync_os_storage_fork = { version = "=0.18.0", path = "lib/storage_fork" }
 zksync_os_storage_api = { version = "=0.18.0", path = "lib/storage_api" }
 zksync_os_types = { version = "=0.18.0", path = "lib/types" }
 zksync_os_genesis = { version = "=0.18.0", path = "lib/genesis" }

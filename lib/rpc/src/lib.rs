@@ -15,10 +15,7 @@ mod metrics;
 mod ots_impl;
 mod result;
 mod rpc_storage;
-pub use rpc_storage::{
-    ForkedReplayStorage, ForkedRepository, ForkedStateHistory, ReadRpcStorage, RemoteForkClient,
-    RpcStorage,
-};
+pub use rpc_storage::{ReadRpcStorage, RpcStorage};
 mod debug_impl;
 pub mod js_tracer;
 mod log_proof_utils;

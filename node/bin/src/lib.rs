@@ -89,10 +89,7 @@ use zksync_os_raft::{
 };
 use zksync_os_reth_compat::provider::ZkProviderFactory;
 use zksync_os_revm_consistency_checker::node::RevmConsistencyChecker;
-use zksync_os_rpc::{
-    EthCallHandler, ForkedReplayStorage, ForkedRepository, ForkedStateHistory, RemoteForkClient,
-    RpcStorage,
-};
+use zksync_os_rpc::{EthCallHandler, RpcStorage};
 use zksync_os_rpc_api::eth::EthApiClient;
 use zksync_os_sequencer::execution::block_context_provider::BlockContextProvider;
 use zksync_os_sequencer::execution::{
@@ -105,6 +102,9 @@ use zksync_os_storage::lazy::RepositoryManager;
 use zksync_os_storage_api::{
     FinalityStatus, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, ReplayRecord,
     WriteReplay, WriteRepository, WriteState,
+};
+use zksync_os_storage_fork::{
+    RemoteForkClient, ReplayStorage, RepositoryStorage, StateHistoryStorage,
 };
 use zksync_os_types::{
     BlockStartCursors, ExecutionVersion, ProtocolSemanticVersion, PubdataMode,
@@ -323,10 +323,18 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         .expect("failed to initialize remote fork storage")
         .map(Arc::new)
         .map(|client| client as Arc<_>);
-    let repositories = ForkedRepository::new(repository_manager, remote_fork_storage.clone());
-    let block_replay_storage =
-        ForkedReplayStorage::new(block_replay_storage, remote_fork_storage.clone());
-    let state = ForkedStateHistory::new(state, remote_fork_storage.clone());
+    let repositories = match remote_fork_storage.clone() {
+        Some(remote_fork) => RepositoryStorage::forked(repository_manager, remote_fork),
+        None => RepositoryStorage::new(repository_manager),
+    };
+    let block_replay_storage = match remote_fork_storage.clone() {
+        Some(remote_fork) => ReplayStorage::forked(block_replay_storage, remote_fork),
+        None => ReplayStorage::new(block_replay_storage),
+    };
+    let state = match remote_fork_storage {
+        Some(remote_fork) => StateHistoryStorage::forked(state, remote_fork),
+        None => StateHistoryStorage::new(state),
+    };
 
     tracing::info!("Initializing mempools");
     let zk_provider_factory = ZkProviderFactory::new(state.clone(), repositories.clone(), chain_id);
