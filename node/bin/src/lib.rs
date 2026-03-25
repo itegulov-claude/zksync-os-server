@@ -403,7 +403,11 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         tracing::info!("initializing p2p networking");
 
         let network_service = NetworkService::new(
-            config.network_config.clone().into(),
+            config
+                .network_config
+                .clone()
+                .try_into()
+                .expect("failed to resolve network config"),
             ZksProtocolConfig {
                 node_role,
                 starting_block,

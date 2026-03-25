@@ -1,12 +1,13 @@
 use alloy::primitives::B256;
 use alloy::signers::k256::ecdsa::SigningKey;
-use reth_network_peers::TrustedPeer;
+use reth_net_nat::net_if::resolve_net_if_ip;
 use serde::Deserialize;
 use serde_json::Value;
 use smart_config::ErrorWithOrigin;
 use smart_config::de::{DeserializeContext, DeserializeParam};
-use smart_config::metadata::{BasicTypes, ParamMetadata, TypeDescription};
-use zksync_os_network::{NodeRecord, SecretKey};
+use smart_config::metadata::{BasicTypes, ParamMetadata};
+use std::net::{IpAddr, Ipv4Addr};
+use zksync_os_network::SecretKey;
 use zksync_os_operator_signer::SignerConfig;
 
 /// Custom deserializer for [`SignerConfig`].
@@ -104,60 +105,43 @@ impl DeserializeParam<SecretKey> for SecretKeyDeserializer {
     }
 }
 
-/// Custom deserializer for network boot nodes.
-///
-/// Accepts standard `enode://<pk>@<ip>:<port>` values and DNS-aware
-/// `enode://<pk>@<dns_name>:<port>` values. DNS entries are resolved during startup config load.
-#[derive(Debug)]
-pub struct BootNodeDeserializer;
-
-impl DeserializeParam<NodeRecord> for BootNodeDeserializer {
-    const EXPECTING: BasicTypes = BasicTypes::STRING;
-
-    fn describe(&self, description: &mut TypeDescription) {
-        description.set_details("enode://<node ID>@<IP-or-DNS host>:<port>");
+pub fn resolve_network_interface(interface: &str) -> Result<Ipv4Addr, String> {
+    if let Ok(ip) = interface.parse::<Ipv4Addr>() {
+        return Ok(ip);
     }
 
-    fn deserialize_param(
-        &self,
-        ctx: DeserializeContext<'_>,
-        param: &'static ParamMetadata,
-    ) -> Result<NodeRecord, ErrorWithOrigin> {
-        let deserializer = ctx.current_value_deserializer(param.name)?;
-        let raw = String::deserialize(deserializer)?;
-        let peer = raw
-            .parse::<TrustedPeer>()
-            .map_err(ErrorWithOrigin::custom)?;
-        peer.resolve_blocking().map_err(|err| {
-            ErrorWithOrigin::custom(format!("failed to resolve boot node '{raw}': {err}"))
-        })
-    }
-
-    fn serialize_param(&self, param: &NodeRecord) -> Value {
-        serde_json::to_value(param.to_string()).expect("failed serializing to JSON")
+    match resolve_net_if_ip(interface)
+        .map_err(|err| format!("failed to resolve network interface '{interface}': {err}"))?
+    {
+        IpAddr::V4(ip) => Ok(ip),
+        IpAddr::V6(ip) => Err(format!(
+            "failed to resolve network interface '{interface}': resolved to unsupported IPv6 address {ip}"
+        )),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::BootNodeDeserializer;
+    use super::resolve_network_interface;
+    use reth_network_peers::TrustedPeer;
     use smart_config::{
         ConfigRepository, ConfigSchema, DescribeConfig, DeserializeConfig, Environment, Serde,
         de::Delimited,
     };
     use std::net::Ipv4Addr;
-    use zksync_os_network::NodeRecord;
 
     #[derive(Debug, DescribeConfig, DeserializeConfig)]
     #[config(crate = smart_config)]
     struct TestNetworkConfig {
-        #[config(default_t = Ipv4Addr::UNSPECIFIED, with = Serde![str], alias = "interface")]
+        #[config(default_t = Ipv4Addr::UNSPECIFIED, with = Serde![str])]
         address: Ipv4Addr,
-        #[config(default, with = Delimited::repeat(BootNodeDeserializer, ","))]
-        boot_nodes: Vec<NodeRecord>,
+        #[config(default_t = None)]
+        interface: Option<String>,
+        #[config(default, with = Delimited::repeat(Serde![str], ","))]
+        boot_nodes: Vec<TrustedPeer>,
     }
 
-    fn parse_config(env_vars: [(&str, &str); 1]) -> TestNetworkConfig {
+    fn parse_config<const N: usize>(env_vars: [(&str, &str); N]) -> TestNetworkConfig {
         let mut schema = ConfigSchema::default();
         schema
             .insert(&TestNetworkConfig::DESCRIPTION, "network")
@@ -167,9 +151,18 @@ mod tests {
     }
 
     #[test]
-    fn network_interface_alias_sets_address() {
+    fn network_interface_accepts_ipv4_addresses() {
+        assert_eq!(
+            resolve_network_interface("172.16.1.12").unwrap(),
+            Ipv4Addr::new(172, 16, 1, 12)
+        );
+    }
+
+    #[test]
+    fn network_interface_is_a_separate_config_field() {
         let config = parse_config([("NETWORK_INTERFACE", "172.16.1.12")]);
-        assert_eq!(config.address, Ipv4Addr::new(172, 16, 1, 12));
+        assert_eq!(config.address, Ipv4Addr::UNSPECIFIED);
+        assert_eq!(config.interface.as_deref(), Some("172.16.1.12"));
     }
 
     #[test]
@@ -180,8 +173,10 @@ mod tests {
         )]);
 
         assert_eq!(config.boot_nodes.len(), 1);
-        assert!(config.boot_nodes[0].address.is_loopback());
-        assert_eq!(config.boot_nodes[0].tcp_port, 30303);
-        assert_eq!(config.boot_nodes[0].udp_port, 30301);
+        assert_eq!(config.boot_nodes[0].host.to_string(), "localhost");
+        let record = config.boot_nodes[0].resolve_blocking().unwrap();
+        assert!(record.address.is_loopback());
+        assert_eq!(record.tcp_port, 30303);
+        assert_eq!(record.udp_port, 30301);
     }
 }

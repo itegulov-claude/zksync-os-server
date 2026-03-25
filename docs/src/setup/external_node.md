@@ -30,6 +30,7 @@ rpc_address=0.0.0.0:3051 \
 cargo run 
 ```
 
-If the node should advertise a private LAN IP, set `network_interface` instead of `network_address`,
-for example `network_interface=172.16.1.12`. `network_boot_nodes` also accepts DNS hosts such as
-`enode://<node_id>@main-node.internal:3060`; the hostname is resolved during node startup.
+If the node should advertise a private LAN IP, set `network_interface`. This overrides
+`network_address` and accepts either a literal IPv4 such as `network_interface=172.16.1.12` or a
+local interface name such as `network_interface=eth0`. `network_boot_nodes` also accepts DNS hosts
+such as `enode://<node_id>@main-node.internal:3060`.
