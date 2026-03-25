@@ -14873,7 +14873,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_os_storage_fork"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "alloy",
  "anyhow",
