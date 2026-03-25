@@ -1,5 +1,5 @@
 use alloy::eips::{BlockHashOrNumber, BlockId, BlockNumberOrTag};
-use alloy::primitives::{B256, BlockNumber};
+use alloy::primitives::{Address, B256, BlockNumber, TxHash, TxNonce};
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 use std::sync::Mutex;
 use std::{ops::RangeInclusive, sync::Arc};
@@ -7,10 +7,11 @@ use zksync_os_interface::traits::{PreimageSource, ReadStorage};
 use zksync_os_merkle_tree_api::MerkleTreeProver;
 use zksync_os_rpc_api::unstable::UnstableApiClient;
 use zksync_os_storage_api::{
-    ReadBatch, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, RepositoryBlock,
-    RepositoryError, RepositoryResult, StateError, StateResult, ViewState,
-    notifications::SubscribeToBlocks,
+    ReadBatch, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, ReplayRecord,
+    RepositoryBlock, RepositoryError, RepositoryResult, StateError, StateResult, StoredTxData,
+    TxMeta, ViewState, notifications::SubscribeToBlocks,
 };
+use zksync_os_types::{ZkReceiptEnvelope, ZkTransaction};
 
 pub trait ReadRpcStorage: ReadStateHistory + Clone {
     fn repository(&self) -> &dyn ReadRepository;
@@ -113,7 +114,8 @@ pub trait ReadRpcStorage: ReadStateHistory + Clone {
 #[derive(Clone)]
 pub struct RpcStorage<Repository, Replay, Finality, Batch, StateHistory> {
     repository: Repository,
-    replay_storage: Replay,
+    forked_repository: ForkedRepository<Repository>,
+    forked_replay_storage: ForkedReplayStorage<Replay>,
     finality: Finality,
     batch: Batch,
     state: StateHistory,
@@ -129,7 +131,7 @@ impl<Repository, Replay, Finality, Batch, StateHistory> std::fmt::Debug
     }
 }
 
-impl<Repository, Replay, Finality, Batch, StateHistory>
+impl<Repository: Clone, Replay: Clone, Finality, Batch, StateHistory>
     RpcStorage<Repository, Replay, Finality, Batch, StateHistory>
 {
     pub fn new(
@@ -160,9 +162,18 @@ impl<Repository, Replay, Finality, Batch, StateHistory>
         tree: Arc<dyn MerkleTreeProver>,
         remote_fork: Option<Arc<dyn RemoteForkSource>>,
     ) -> Self {
+        let forked_repository = ForkedRepository {
+            local: repository.clone(),
+            remote_fork: remote_fork.clone(),
+        };
+        let forked_replay_storage = ForkedReplayStorage {
+            local: replay_storage.clone(),
+            remote_fork: remote_fork.clone(),
+        };
         Self {
             repository,
-            replay_storage,
+            forked_repository,
+            forked_replay_storage,
             finality,
             batch,
             state,
@@ -181,7 +192,7 @@ impl<
 > ReadRpcStorage for RpcStorage<Repository, Replay, Finality, Batch, StateHistory>
 {
     fn repository(&self) -> &dyn ReadRepository {
-        &self.repository
+        &self.forked_repository
     }
 
     fn block_subscriptions(&self) -> &dyn SubscribeToBlocks {
@@ -189,7 +200,7 @@ impl<
     }
 
     fn replay_storage(&self) -> &dyn ReadReplay {
-        &self.replay_storage
+        &self.forked_replay_storage
     }
 
     fn finality(&self) -> &dyn ReadFinality {
@@ -260,6 +271,159 @@ pub enum RpcStorageError {
 pub trait RemoteForkSource: std::fmt::Debug + Send + Sync {
     fn read_value(&self, block_number: BlockNumber, key: B256) -> StateResult<Option<B256>>;
     fn read_preimage(&self, hash: B256) -> StateResult<Option<Vec<u8>>>;
+    fn get_repository_block(&self, block: BlockHashOrNumber) -> Option<RepositoryBlock>;
+    fn get_raw_transaction(&self, hash: TxHash) -> Option<Vec<u8>>;
+    fn get_transaction(&self, hash: TxHash) -> Option<ZkTransaction>;
+    fn get_transaction_receipt(&self, hash: TxHash) -> Option<ZkReceiptEnvelope>;
+    fn get_transaction_meta(&self, hash: TxHash) -> Option<TxMeta>;
+    fn get_transaction_hash_by_sender_nonce(
+        &self,
+        sender: Address,
+        nonce: TxNonce,
+    ) -> Option<TxHash>;
+    fn get_stored_transaction(&self, hash: TxHash) -> Option<StoredTxData>;
+    fn get_latest_block(&self) -> Option<BlockNumber>;
+    fn get_replay_record(&self, block_number: BlockNumber) -> Option<ReplayRecord>;
+    fn get_latest_replay_record(&self) -> Option<BlockNumber>;
+}
+
+#[derive(Clone, Debug)]
+struct ForkedRepository<Local> {
+    local: Local,
+    remote_fork: Option<Arc<dyn RemoteForkSource>>,
+}
+
+impl<Local: ReadRepository> ReadRepository for ForkedRepository<Local> {
+    fn get_block_by_number(
+        &self,
+        number: BlockNumber,
+    ) -> RepositoryResult<Option<RepositoryBlock>> {
+        Ok(self.local.get_block_by_number(number)?.or_else(|| {
+            self.remote_fork
+                .as_ref()
+                .and_then(|remote| remote.get_repository_block(number.into()))
+        }))
+    }
+
+    fn get_block_by_hash(
+        &self,
+        hash: alloy::primitives::BlockHash,
+    ) -> RepositoryResult<Option<RepositoryBlock>> {
+        Ok(self.local.get_block_by_hash(hash)?.or_else(|| {
+            self.remote_fork
+                .as_ref()
+                .and_then(|remote| remote.get_repository_block(hash.into()))
+        }))
+    }
+
+    fn get_raw_transaction(&self, hash: TxHash) -> RepositoryResult<Option<Vec<u8>>> {
+        Ok(self.local.get_raw_transaction(hash)?.or_else(|| {
+            self.remote_fork
+                .as_ref()
+                .and_then(|remote| remote.get_raw_transaction(hash))
+        }))
+    }
+
+    fn get_transaction(&self, hash: TxHash) -> RepositoryResult<Option<ZkTransaction>> {
+        Ok(self.local.get_transaction(hash)?.or_else(|| {
+            self.remote_fork
+                .as_ref()
+                .and_then(|remote| remote.get_transaction(hash))
+        }))
+    }
+
+    fn get_transaction_receipt(&self, hash: TxHash) -> RepositoryResult<Option<ZkReceiptEnvelope>> {
+        Ok(self.local.get_transaction_receipt(hash)?.or_else(|| {
+            self.remote_fork
+                .as_ref()
+                .and_then(|remote| remote.get_transaction_receipt(hash))
+        }))
+    }
+
+    fn get_transaction_meta(&self, hash: TxHash) -> RepositoryResult<Option<TxMeta>> {
+        Ok(self.local.get_transaction_meta(hash)?.or_else(|| {
+            self.remote_fork
+                .as_ref()
+                .and_then(|remote| remote.get_transaction_meta(hash))
+        }))
+    }
+
+    fn get_transaction_hash_by_sender_nonce(
+        &self,
+        sender: Address,
+        nonce: TxNonce,
+    ) -> RepositoryResult<Option<TxHash>> {
+        Ok(self
+            .local
+            .get_transaction_hash_by_sender_nonce(sender, nonce)?
+            .or_else(|| {
+                self.remote_fork
+                    .as_ref()
+                    .and_then(|remote| remote.get_transaction_hash_by_sender_nonce(sender, nonce))
+            }))
+    }
+
+    fn get_stored_transaction(&self, hash: TxHash) -> RepositoryResult<Option<StoredTxData>> {
+        Ok(self.local.get_stored_transaction(hash)?.or_else(|| {
+            self.remote_fork
+                .as_ref()
+                .and_then(|remote| remote.get_stored_transaction(hash))
+        }))
+    }
+
+    fn get_latest_block(&self) -> u64 {
+        self.remote_fork
+            .as_ref()
+            .and_then(|remote| remote.get_latest_block())
+            .map_or_else(
+                || self.local.get_latest_block(),
+                |remote| remote.max(self.local.get_latest_block()),
+            )
+    }
+
+    fn get_earliest_block(&self) -> u64 {
+        self.local.get_earliest_block()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ForkedReplayStorage<Local> {
+    local: Local,
+    remote_fork: Option<Arc<dyn RemoteForkSource>>,
+}
+
+impl<Local: ReadReplay> ReadReplay for ForkedReplayStorage<Local> {
+    fn get_context(
+        &self,
+        block_number: BlockNumber,
+    ) -> Option<zksync_os_interface::types::BlockContext> {
+        self.get_replay_record(block_number)
+            .map(|record| record.block_context)
+    }
+
+    fn get_replay_record_by_key(
+        &self,
+        block_number: BlockNumber,
+        db_key: Option<Vec<u8>>,
+    ) -> Option<ReplayRecord> {
+        self.local
+            .get_replay_record_by_key(block_number, db_key)
+            .or_else(|| {
+                self.remote_fork
+                    .as_ref()
+                    .and_then(|remote| remote.get_replay_record(block_number))
+            })
+    }
+
+    fn latest_record(&self) -> BlockNumber {
+        self.remote_fork
+            .as_ref()
+            .and_then(|remote| remote.get_latest_replay_record())
+            .map_or_else(
+                || self.local.latest_record(),
+                |remote| remote.max(self.local.latest_record()),
+            )
+    }
 }
 
 #[derive(Debug)]
@@ -278,6 +442,24 @@ impl RemoteForkClient {
             client,
             runtime: Mutex::new(runtime),
         })
+    }
+
+    fn with_runtime<Output>(
+        &self,
+        future: impl std::future::Future<Output = Result<Output, jsonrpsee::core::ClientError>>,
+        log_error: impl FnOnce(&jsonrpsee::core::ClientError),
+    ) -> Option<Output> {
+        let runtime = self
+            .runtime
+            .lock()
+            .expect("remote fork runtime lock is poisoned");
+        match runtime.block_on(future) {
+            Ok(value) => Some(value),
+            Err(err) => {
+                log_error(&err);
+                None
+            }
+        }
     }
 }
 
@@ -306,6 +488,87 @@ impl RemoteForkSource for RemoteForkClient {
                 tracing::warn!(?hash, %err, "failed to fetch remote fork preimage");
                 StateError::NotFound(0)
             })
+    }
+
+    fn get_repository_block(&self, block: BlockHashOrNumber) -> Option<RepositoryBlock> {
+        self.with_runtime(self.client.get_repository_block(block), |err| {
+            tracing::warn!(?block, %err, "failed to fetch remote fork block");
+        })
+        .flatten()
+    }
+
+    fn get_raw_transaction(&self, hash: TxHash) -> Option<Vec<u8>> {
+        self.with_runtime(self.client.get_raw_transaction(hash), |err| {
+            tracing::warn!(?hash, %err, "failed to fetch remote fork raw transaction");
+        })
+        .flatten()
+    }
+
+    fn get_transaction(&self, hash: TxHash) -> Option<ZkTransaction> {
+        self.with_runtime(self.client.get_transaction(hash), |err| {
+            tracing::warn!(?hash, %err, "failed to fetch remote fork transaction");
+        })
+        .flatten()
+    }
+
+    fn get_transaction_receipt(&self, hash: TxHash) -> Option<ZkReceiptEnvelope> {
+        self.with_runtime(self.client.get_transaction_receipt(hash), |err| {
+            tracing::warn!(?hash, %err, "failed to fetch remote fork receipt");
+        })
+        .flatten()
+    }
+
+    fn get_transaction_meta(&self, hash: TxHash) -> Option<TxMeta> {
+        self.with_runtime(self.client.get_transaction_meta(hash), |err| {
+            tracing::warn!(?hash, %err, "failed to fetch remote fork transaction meta");
+        })
+        .flatten()
+    }
+
+    fn get_transaction_hash_by_sender_nonce(
+        &self,
+        sender: Address,
+        nonce: TxNonce,
+    ) -> Option<TxHash> {
+        self.with_runtime(
+            self.client
+                .get_transaction_hash_by_sender_nonce(sender, nonce),
+            |err| {
+                tracing::warn!(
+                    ?sender,
+                    nonce,
+                    %err,
+                    "failed to fetch remote fork sender nonce mapping"
+                );
+            },
+        )
+        .flatten()
+    }
+
+    fn get_stored_transaction(&self, hash: TxHash) -> Option<StoredTxData> {
+        self.with_runtime(self.client.get_stored_transaction(hash), |err| {
+            tracing::warn!(?hash, %err, "failed to fetch remote fork stored transaction");
+        })
+        .flatten()
+    }
+
+    fn get_latest_block(&self) -> Option<BlockNumber> {
+        self.with_runtime(self.client.get_latest_block_number(), |err| {
+            tracing::warn!(%err, "failed to fetch remote fork latest block number");
+        })
+    }
+
+    fn get_replay_record(&self, block_number: BlockNumber) -> Option<ReplayRecord> {
+        self.with_runtime(self.client.get_replay_record(block_number), |err| {
+            tracing::warn!(block_number, %err, "failed to fetch remote fork replay record");
+        })
+        .flatten()
+    }
+
+    fn get_latest_replay_record(&self) -> Option<BlockNumber> {
+        self.with_runtime(self.client.get_latest_replay_record_number(), |err| {
+            tracing::warn!(%err, "failed to fetch remote fork latest replay record");
+        })
     }
 }
 
@@ -386,6 +649,46 @@ mod tests {
 
         fn read_preimage(&self, hash: B256) -> StateResult<Option<Vec<u8>>> {
             Ok(self.preimages.get(&hash).cloned())
+        }
+
+        fn get_repository_block(&self, _: BlockHashOrNumber) -> Option<RepositoryBlock> {
+            None
+        }
+
+        fn get_raw_transaction(&self, _: TxHash) -> Option<Vec<u8>> {
+            None
+        }
+
+        fn get_transaction(&self, _: TxHash) -> Option<ZkTransaction> {
+            None
+        }
+
+        fn get_transaction_receipt(&self, _: TxHash) -> Option<ZkReceiptEnvelope> {
+            None
+        }
+
+        fn get_transaction_meta(&self, _: TxHash) -> Option<TxMeta> {
+            None
+        }
+
+        fn get_transaction_hash_by_sender_nonce(&self, _: Address, _: TxNonce) -> Option<TxHash> {
+            None
+        }
+
+        fn get_stored_transaction(&self, _: TxHash) -> Option<StoredTxData> {
+            None
+        }
+
+        fn get_latest_block(&self) -> Option<BlockNumber> {
+            None
+        }
+
+        fn get_replay_record(&self, _: BlockNumber) -> Option<ReplayRecord> {
+            None
+        }
+
+        fn get_latest_replay_record(&self) -> Option<BlockNumber> {
+            None
         }
     }
 

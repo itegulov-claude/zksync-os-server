@@ -1,6 +1,7 @@
 use crate::ReadRpcStorage;
 use crate::result::ToRpcResult;
-use alloy::primitives::{B256, BlockNumber, TxHash};
+use alloy::eips::BlockHashOrNumber;
+use alloy::primitives::{Address, B256, BlockNumber, TxHash, TxNonce};
 use async_trait::async_trait;
 use jsonrpsee::core::RpcResult;
 use zksync_os_interface::traits::{PreimageSource, ReadStorage};
@@ -71,6 +72,73 @@ impl<RpcStorage: ReadRpcStorage> UnstableNamespace<RpcStorage> {
         let mut state = self.storage.state_view_at(latest_block)?;
         Ok(state.get_preimage(hash))
     }
+
+    fn get_repository_block_impl(
+        &self,
+        block: BlockHashOrNumber,
+    ) -> UnstableResult<Option<zksync_os_storage_api::RepositoryBlock>> {
+        Ok(self.storage.get_block_by_hash_or_number(block)?)
+    }
+
+    fn get_raw_transaction_impl(&self, hash: TxHash) -> UnstableResult<Option<Vec<u8>>> {
+        Ok(self.storage.repository().get_raw_transaction(hash)?)
+    }
+
+    fn get_transaction_impl(
+        &self,
+        hash: TxHash,
+    ) -> UnstableResult<Option<zksync_os_types::ZkTransaction>> {
+        Ok(self.storage.repository().get_transaction(hash)?)
+    }
+
+    fn get_transaction_receipt_impl(
+        &self,
+        hash: TxHash,
+    ) -> UnstableResult<Option<zksync_os_types::ZkReceiptEnvelope>> {
+        Ok(self.storage.repository().get_transaction_receipt(hash)?)
+    }
+
+    fn get_transaction_meta_impl(
+        &self,
+        hash: TxHash,
+    ) -> UnstableResult<Option<zksync_os_storage_api::TxMeta>> {
+        Ok(self.storage.repository().get_transaction_meta(hash)?)
+    }
+
+    fn get_transaction_hash_by_sender_nonce_impl(
+        &self,
+        sender: Address,
+        nonce: TxNonce,
+    ) -> UnstableResult<Option<TxHash>> {
+        Ok(self
+            .storage
+            .repository()
+            .get_transaction_hash_by_sender_nonce(sender, nonce)?)
+    }
+
+    fn get_stored_transaction_impl(
+        &self,
+        hash: TxHash,
+    ) -> UnstableResult<Option<zksync_os_storage_api::StoredTxData>> {
+        Ok(self.storage.repository().get_stored_transaction(hash)?)
+    }
+
+    fn get_latest_block_number_impl(&self) -> u64 {
+        self.storage.repository().get_latest_block()
+    }
+
+    fn get_replay_record_impl(
+        &self,
+        block_number: u64,
+    ) -> Option<zksync_os_storage_api::ReplayRecord> {
+        self.storage
+            .replay_storage()
+            .get_replay_record(block_number)
+    }
+
+    fn get_latest_replay_record_number_impl(&self) -> u64 {
+        self.storage.replay_storage().latest_record()
+    }
 }
 
 #[async_trait]
@@ -91,6 +159,69 @@ impl<RpcStorage: ReadRpcStorage> UnstableApiServer for UnstableNamespace<RpcStor
 
     async fn get_preimage(&self, hash: B256) -> RpcResult<Option<Vec<u8>>> {
         self.get_preimage_impl(hash).to_rpc_result()
+    }
+
+    async fn get_repository_block(
+        &self,
+        block: BlockHashOrNumber,
+    ) -> RpcResult<Option<zksync_os_storage_api::RepositoryBlock>> {
+        self.get_repository_block_impl(block).to_rpc_result()
+    }
+
+    async fn get_raw_transaction(&self, hash: TxHash) -> RpcResult<Option<Vec<u8>>> {
+        self.get_raw_transaction_impl(hash).to_rpc_result()
+    }
+
+    async fn get_transaction(
+        &self,
+        hash: TxHash,
+    ) -> RpcResult<Option<zksync_os_types::ZkTransaction>> {
+        self.get_transaction_impl(hash).to_rpc_result()
+    }
+
+    async fn get_transaction_receipt(
+        &self,
+        hash: TxHash,
+    ) -> RpcResult<Option<zksync_os_types::ZkReceiptEnvelope>> {
+        self.get_transaction_receipt_impl(hash).to_rpc_result()
+    }
+
+    async fn get_transaction_meta(
+        &self,
+        hash: TxHash,
+    ) -> RpcResult<Option<zksync_os_storage_api::TxMeta>> {
+        self.get_transaction_meta_impl(hash).to_rpc_result()
+    }
+
+    async fn get_transaction_hash_by_sender_nonce(
+        &self,
+        sender: Address,
+        nonce: TxNonce,
+    ) -> RpcResult<Option<TxHash>> {
+        self.get_transaction_hash_by_sender_nonce_impl(sender, nonce)
+            .to_rpc_result()
+    }
+
+    async fn get_stored_transaction(
+        &self,
+        hash: TxHash,
+    ) -> RpcResult<Option<zksync_os_storage_api::StoredTxData>> {
+        self.get_stored_transaction_impl(hash).to_rpc_result()
+    }
+
+    async fn get_latest_block_number(&self) -> RpcResult<u64> {
+        Ok(self.get_latest_block_number_impl())
+    }
+
+    async fn get_replay_record(
+        &self,
+        block_number: u64,
+    ) -> RpcResult<Option<zksync_os_storage_api::ReplayRecord>> {
+        Ok(self.get_replay_record_impl(block_number))
+    }
+
+    async fn get_latest_replay_record_number(&self) -> RpcResult<u64> {
+        Ok(self.get_latest_replay_record_number_impl())
     }
 }
 

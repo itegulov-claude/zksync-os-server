@@ -6,7 +6,7 @@ use zksync_os_types::{
     BlockStartCursors, ProtocolSemanticVersion, ZkEnvelope, ZkReceiptEnvelope, ZkTransaction,
 };
 
-#[derive(Debug, Clone, RlpEncodable, RlpDecodable)]
+#[derive(Debug, Clone, Serialize, Deserialize, RlpEncodable, RlpDecodable)]
 #[rlp(trailing)]
 pub struct TxMeta {
     pub block_hash: B256,
@@ -19,7 +19,7 @@ pub struct TxMeta {
     pub contract_address: Option<Address>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredTxData {
     pub tx: ZkTransaction,
     pub receipt: ZkReceiptEnvelope,
@@ -104,7 +104,7 @@ impl ReplayRecord {
 }
 
 /// Chain's L1 finality status. Does not track last proved block as there is no need for it (yet).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalityStatus {
     pub last_committed_block: u64,
     pub last_committed_batch: u64,

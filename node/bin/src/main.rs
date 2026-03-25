@@ -155,6 +155,16 @@ pub async fn main() {
     if !ephemeral_enabled && config.general_config.ephemeral_state.is_some() {
         panic!("`ephemeral_state` requires `ephemeral` mode to be enabled");
     }
+    if config.general_config.fork_rpc_url.is_some() {
+        assert!(
+            ephemeral_enabled,
+            "`fork_rpc_url` requires `ephemeral` mode to be enabled"
+        );
+        assert!(
+            config.general_config.node_role.is_main(),
+            "`fork_rpc_url` is only supported for local main-node simulation"
+        );
+    }
     let _ephemeral_guard = ephemeral_enabled.then(|| enable_ephemeral_mode(&mut config));
     let prometheus_port = config.observability_config.prometheus.port;
 

@@ -714,7 +714,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         ExecutedBatchStorage::new(&config.general_config.rocks_db_path.join(BATCH_DB_NAME));
     let remote_fork_storage = config
         .general_config
-        .main_node_rpc_url
+        .fork_rpc_url
         .as_deref()
         .map(RemoteForkClient::new)
         .transpose()

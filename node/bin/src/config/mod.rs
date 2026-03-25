@@ -241,9 +241,14 @@ pub struct GeneralConfig {
     /// [`GeneralConfig::node_role`] is the source of truth for node type.**
     ///
     /// When set, JSON-RPC simulation endpoints can use this node as a remote fork source for
-    /// state values and preimages that are not yet available locally.
+    /// external-node sync.
     #[config(default_t = None)]
     pub main_node_rpc_url: Option<String>,
+
+    /// When set, the node exposes a local fork mode backed by a remote RPC. This mode is meant
+    /// for local simulation only and must be combined with `ephemeral=true`.
+    #[config(default_t = None)]
+    pub fork_rpc_url: Option<String>,
 
     /// Whether to run the priority tree component.
     /// Required for Main Node (will panic if false on Main Node).
