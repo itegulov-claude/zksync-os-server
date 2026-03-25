@@ -39,17 +39,19 @@ use crate::prover_input_generator::ProverInputGenerator;
 use crate::provider::build_node_provider;
 use crate::state_initializer::StateInitializer;
 use crate::tree_manager::TreeManager;
-use alloy::consensus::BlobTransactionSidecar;
+use alloy::consensus::{BlobTransactionSidecar, BlockBody};
 use alloy::network::{Ethereum, EthereumWallet};
-use alloy::primitives::BlockNumber;
+use alloy::primitives::{B256, BlockNumber};
 use alloy::providers::fillers::{FillProvider, TxFiller};
-use alloy::providers::{Provider, ProviderBuilder, WalletProvider};
+use alloy::providers::{DynProvider, Provider, ProviderBuilder, WalletProvider};
 use anyhow::Context;
 use jsonrpsee::http_client::HttpClient;
 use reth_tasks::Runtime;
 use ruint::aliases::U256;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
@@ -78,8 +80,8 @@ use zksync_os_mempool::subpools::l1::L1Subpool;
 use zksync_os_mempool::subpools::l2::L2Subpool;
 use zksync_os_mempool::subpools::sl_chain_id::SlChainIdSubpool;
 use zksync_os_mempool::subpools::upgrade::UpgradeSubpool;
-use zksync_os_merkle_tree::{MerkleTree, MerkleTreeVersion, RocksDBWrapper};
-use zksync_os_metadata::NODE_VERSION;
+use zksync_os_merkle_tree::{MerkleTree, MerkleTreeProver, MerkleTreeVersion, RocksDBWrapper};
+use zksync_os_metadata::{NODE_SEMVER_VERSION, NODE_VERSION};
 use zksync_os_network::RecordOverride;
 use zksync_os_network::service::{NetworkService, ZksProtocolConfig};
 use zksync_os_observability::GENERAL_METRICS;
@@ -101,10 +103,11 @@ use zksync_os_storage::in_memory::Finality;
 use zksync_os_storage::lazy::RepositoryManager;
 use zksync_os_storage_api::{
     FinalityStatus, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, ReplayRecord,
-    WriteReplay, WriteRepository, WriteState,
+    WriteReplay, WriteRepository, WriteState, notifications::SubscribeToBlocks,
 };
 use zksync_os_storage_fork::{
-    RemoteForkClient, ReplayStorage, RepositoryStorage, StateHistoryStorage,
+    ForkSnapshot, ForkedReplayStorage, ForkedRepository, ForkedStateHistory, RemoteForkClient,
+    RemoteForkSource,
 };
 use zksync_os_types::{
     BlockStartCursors, ExecutionVersion, ProtocolSemanticVersion, PubdataMode,
@@ -117,6 +120,7 @@ const PRIORITY_TREE_DB_NAME: &str = "priority_txs_tree";
 const REPOSITORY_DB_NAME: &str = "repository";
 const BATCH_DB_NAME: &str = "batch";
 pub const INTERNAL_CONFIG_FILE_NAME: &str = "internal_config.json";
+type BackgroundTask = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone>(
@@ -194,7 +198,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         .general_config
         .gateway_rpc_url
         .as_ref()
-        .map(|_| sl_provider.clone());
+        .map(|_| sl_provider.clone().erased());
 
     tracing::info!("Reading L1 state");
     let l1_state = if node_role.is_main() {
@@ -262,28 +266,9 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         chain_id,
     );
 
-    tracing::info!("Initializing BlockReplayStorage");
-
-    let block_replay_storage = BlockReplayStorage::new(
-        &config
-            .general_config
-            .rocks_db_path
-            .join(BLOCK_REPLAY_WAL_DB_NAME),
-        &genesis,
-    )
-    .await;
-
     tracing::info!("Initializing Tree RocksDB");
     let tree_db = TreeManager::load_or_initialize_tree(
         Path::new(&config.general_config.rocks_db_path.join(STATE_TREE_DB_NAME)),
-        &genesis,
-    )
-    .await;
-
-    tracing::info!("Initializing RepositoryManager");
-    let repository_manager = RepositoryManager::new(
-        config.general_config.blocks_to_retain_in_memory,
-        config.general_config.rocks_db_path.join(REPOSITORY_DB_NAME),
         &genesis,
     )
     .await;
@@ -313,28 +298,181 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     .await
     .expect("failed to init CommittedBatchProvider");
 
+    if let Some(fork_rpc_url) = config.general_config.fork_rpc_url.as_deref() {
+        tracing::info!(fork_rpc_url, "Initializing remote fork snapshot");
+        let remote_fork_client = Arc::new(
+            RemoteForkClient::new(fork_rpc_url).expect("failed to initialize remote fork client"),
+        );
+        let fork_snapshot = remote_fork_client
+            .snapshot()
+            .expect("failed to fetch remote fork snapshot");
+        let remote_fork = remote_fork_client as Arc<dyn RemoteForkSource>;
+        let (repositories, block_replay_storage, state) =
+            initialize_forked_storages(&genesis, remote_fork, fork_snapshot).await;
+
+        run_with_storages(
+            runtime,
+            config,
+            bridgehub_address,
+            bytecode_supplier_address,
+            chain_id,
+            process_started_at,
+            genesis,
+            genesis_input_source,
+            l1_provider,
+            sl_provider,
+            gateway_provider,
+            l1_state,
+            committed_batch_provider,
+            tree_db,
+            tree_for_rpc,
+            repositories,
+            block_replay_storage,
+            state,
+            None,
+            None,
+        )
+        .await;
+        return;
+    }
+
+    tracing::info!("Initializing BlockReplayStorage");
+    let block_replay_storage = BlockReplayStorage::new(
+        &config
+            .general_config
+            .rocks_db_path
+            .join(BLOCK_REPLAY_WAL_DB_NAME),
+        &genesis,
+    )
+    .await;
+
+    tracing::info!("Initializing RepositoryManager");
+    let repositories = RepositoryManager::new(
+        config.general_config.blocks_to_retain_in_memory,
+        config.general_config.rocks_db_path.join(REPOSITORY_DB_NAME),
+        &genesis,
+    )
+    .await;
+
     let state = State::new(&config.general_config, &genesis).await;
-    let remote_fork_storage = config
-        .general_config
-        .fork_rpc_url
-        .as_deref()
-        .map(RemoteForkClient::new)
-        .transpose()
-        .expect("failed to initialize remote fork storage")
-        .map(Arc::new)
-        .map(|client| client as Arc<_>);
-    let repositories = match remote_fork_storage.clone() {
-        Some(remote_fork) => RepositoryStorage::forked(repository_manager, remote_fork),
-        None => RepositoryStorage::new(repository_manager),
+    let repository_persist_task =
+        Some(Box::pin(repositories.clone().run_persist_loop()) as BackgroundTask);
+    let state_compaction_task =
+        Some(Box::pin(state.clone().compact_periodically_optional()) as BackgroundTask);
+
+    run_with_storages(
+        runtime,
+        config,
+        bridgehub_address,
+        bytecode_supplier_address,
+        chain_id,
+        process_started_at,
+        genesis,
+        genesis_input_source,
+        l1_provider,
+        sl_provider,
+        gateway_provider,
+        l1_state,
+        committed_batch_provider,
+        tree_db,
+        tree_for_rpc,
+        repositories,
+        block_replay_storage,
+        state,
+        repository_persist_task,
+        state_compaction_task,
+    )
+    .await;
+}
+
+async fn initialize_forked_storages(
+    genesis: &Genesis,
+    remote_fork: Arc<dyn RemoteForkSource>,
+    fork_snapshot: ForkSnapshot,
+) -> (ForkedRepository, ForkedReplayStorage, ForkedStateHistory) {
+    let genesis_state = genesis.state().await;
+    let genesis_upgrade = genesis.genesis_upgrade_tx().await;
+    let (genesis_header, genesis_hash) = genesis_state.header.clone().into_parts();
+    let genesis_block = alloy::consensus::Sealed::new_unchecked(
+        alloy::consensus::Block {
+            header: genesis_header,
+            body: BlockBody {
+                transactions: vec![],
+                ommers: vec![],
+                withdrawals: None,
+            },
+        },
+        genesis_hash,
+    );
+    let genesis_replay_record = ReplayRecord {
+        block_context: genesis_state.context,
+        transactions: vec![],
+        previous_block_timestamp: 0,
+        node_version: NODE_SEMVER_VERSION.clone(),
+        protocol_version: genesis_upgrade.protocol_version.clone(),
+        block_output_hash: B256::ZERO,
+        force_preimages: genesis_upgrade.force_deploy_preimages.clone(),
+        starting_cursors: BlockStartCursors::default(),
     };
-    let block_replay_storage = match remote_fork_storage.clone() {
-        Some(remote_fork) => ReplayStorage::forked(block_replay_storage, remote_fork),
-        None => ReplayStorage::new(block_replay_storage),
-    };
-    let state = match remote_fork_storage {
-        Some(remote_fork) => StateHistoryStorage::forked(state, remote_fork),
-        None => StateHistoryStorage::new(state),
-    };
+    let genesis_preimages = genesis_state
+        .preimages
+        .iter()
+        .cloned()
+        .chain(genesis_upgrade.force_deploy_preimages.iter().cloned())
+        .collect::<Vec<_>>();
+
+    (
+        ForkedRepository::new(
+            genesis_block,
+            fork_snapshot.latest_block_number,
+            remote_fork.clone(),
+        ),
+        ForkedReplayStorage::new(
+            genesis_replay_record,
+            fork_snapshot.latest_replay_record_number,
+            remote_fork.clone(),
+        ),
+        ForkedStateHistory::new(
+            genesis_state.storage_logs.clone(),
+            genesis_preimages,
+            fork_snapshot.latest_block_number,
+            remote_fork,
+        ),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_with_storages<Repository, Replay, State, L1F, L1P, SLF, SLP>(
+    runtime: &Runtime,
+    config: Config,
+    bridgehub_address: alloy::primitives::Address,
+    bytecode_supplier_address: alloy::primitives::Address,
+    chain_id: u64,
+    process_started_at: Instant,
+    genesis: Genesis,
+    genesis_input_source: Arc<dyn GenesisInputSource>,
+    l1_provider: FillProvider<L1F, L1P>,
+    sl_provider: FillProvider<SLF, SLP>,
+    gateway_provider: Option<DynProvider>,
+    l1_state: L1State,
+    committed_batch_provider: CommittedBatchProvider,
+    tree_db: MerkleTree<RocksDBWrapper>,
+    tree_for_rpc: Arc<dyn MerkleTreeProver>,
+    repositories: Repository,
+    block_replay_storage: Replay,
+    state: State,
+    repository_persist_task: Option<BackgroundTask>,
+    state_compaction_task: Option<BackgroundTask>,
+) where
+    Repository: ReadRepository + WriteRepository + SubscribeToBlocks + Clone + Send + 'static,
+    Replay: ReadReplay + WriteReplay + Clone + Send + 'static,
+    State: ReadStateHistory + WriteState + Clone + Send + 'static,
+    L1F: TxFiller<Ethereum> + WalletProvider<Wallet = EthereumWallet> + 'static,
+    L1P: Provider<Ethereum> + Clone + 'static,
+    SLF: TxFiller<Ethereum> + WalletProvider<Wallet = EthereumWallet> + 'static,
+    SLP: Provider<Ethereum> + Clone + 'static,
+{
+    let node_role = config.general_config.node_role;
 
     tracing::info!("Initializing mempools");
     let zk_provider_factory = ZkProviderFactory::new(state.clone(), repositories.clone(), chain_id);
@@ -365,10 +503,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     if let Some(block_rebuild) = &config.sequencer_config.block_rebuild
         && node_role.is_main()
     {
-        // The assertion is only relevant for the main node.
-        // External node can be started at any point and doesn't have to be in sync with L1.
-        // But the main node is expected to only produce blocks on top of committed L1 blocks,
-        // as those can't be re-sequenced.
         assert!(
             block_rebuild.from_block > node_startup_state.last_l1_committed_block,
             "rebuild_from_block must be > last_l1_committed_block, got {} <= {}",
@@ -384,23 +518,17 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         last_executed_batch: l1_state.last_executed_batch,
     });
 
-    // `starting_block` - the block number to go through the pipeline.
     let starting_block = if node_startup_state.l1_state.last_committed_batch > 0 {
-        // todo: ideally this should be searched through p2p networking instead of RPC
-        //       but too many things depend on this being initialized here right now
-        //       once refactored we can get rid of `main_node_rpc_url` config param
         let last_matching_block =
             if let Some(main_node_rpc_url) = &config.general_config.main_node_rpc_url {
-                find_last_matching_main_node_block(&repositories.local(), main_node_rpc_url)
+                find_last_matching_main_node_block(&repositories, main_node_rpc_url)
                     .await
                     .expect("Failed to find last matching block with main node")
             } else {
                 node_startup_state.repositories_persisted_block
             };
-        // Some batches committed - starting from an already committed batch
         determine_starting_block(&config, &node_startup_state, &state, last_matching_block)
     } else {
-        // No batches committed - starting from block/batch 1.
         1
     };
 
@@ -415,7 +543,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
 
     node_startup_state.assert_consistency();
 
-    // Channel between NetworkService and Sequencer
     let (replay_sender, replays_for_sequencer) = tokio::sync::mpsc::channel(128);
 
     let ConsensusRuntimeParts {
@@ -431,7 +558,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             ZksProtocolConfig {
                 node_role,
                 starting_block,
-                // This will be gone once we migrate away from record overrides
                 record_overrides: config
                     .sequencer_config
                     .en_replay_record_overrides
@@ -526,19 +652,15 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     let upgrade_subpool = UpgradeSubpool::new(current_protocol_version.clone());
     let sl_chain_id_subpool = SlChainIdSubpool::default();
     let interop_fee_subpool = InteropFeeSubpool::new(next_cursors.interop_fee_number);
-    let interop_roots_subpool = InteropRootsSubpool::new(
-        // todo: change to config.sequencer_config.interop_roots_per_tx when contracts are updated
-        1,
-    );
+    let interop_roots_subpool = InteropRootsSubpool::new(1);
 
-    // If we start from the very first block, we should start by sending upgrade tx for genesis.
     if starting_block == 1 {
         let genesis_upgrade = genesis.genesis_upgrade_tx().await;
         let upgrade_tx = UpgradeInfo {
             tx: Some(genesis_upgrade.tx.clone()),
             metadata: UpgradeMetadata {
                 protocol_version: genesis_upgrade.protocol_version.clone(),
-                timestamp: 0, // No restrictions on timestamp.
+                timestamp: 0,
                 force_preimages: genesis_upgrade.force_deploy_preimages.clone(),
             },
         };
@@ -594,9 +716,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         .run(),
     );
 
-    // Transaction acceptance state - tracks whether we're accepting new transactions
-    // Main nodes: accepts, but may switch to reject when `sequencer_max_blocks_to_produce` blocks are produced
-    // External nodes: always accepts, but may be rejected on the main node side during forwarding
     let (tx_acceptance_state_sender, tx_acceptance_state_receiver) =
         watch::channel(TransactionAcceptanceState::Accepting);
 
@@ -616,10 +735,8 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         watch::channel(None);
 
     tracing::info!("Initializing pubdata price provider");
-    // Channels for GasAdjuster->BlockContextProvider communication.
     let (pubdata_price_sender, pubdata_price_receiver) = watch::channel(None);
     let (blob_fill_ratio_sender, blob_fill_ratio_receiver) = watch::channel(None);
-    // Channel for Batcher->GasAdjuster communication. Batcher send sidecar to gas adjuster to estimate blob fill ratio.
     let (sidecar_sender, sidecar_receiver) = tokio::sync::mpsc::channel(10);
     if node_role.is_main() {
         let pubdata_mode = config
@@ -643,12 +760,11 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         runtime.spawn_critical_task("gas adjuster", gas_adjuster.run());
     }
 
-    // ========== Start BlockContextProvider and its state ===========
     tracing::info!("Initializing BlockContextProvider");
 
     let previous_block_timestamp: u64 = first_replay_record
         .as_ref()
-        .map_or(0, |record| record.previous_block_timestamp); // if no previous block, assume genesis block
+        .map_or(0, |record| record.previous_block_timestamp);
 
     let block_hashes_for_next_block = first_replay_record
         .as_ref()
@@ -675,8 +791,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         })
     };
 
-    // todo: `BlockContextProvider` initialization and its dependencies
-    // should be moved to `sequencer`
     let fee_provider = FeeProvider::new(
         config.fee_config.clone().into(),
         previous_block_fee_params,
@@ -705,7 +819,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         chain_id,
         config.sequencer_config.block_gas_limit,
         config.sequencer_config.block_pubdata_limit_bytes,
-        // We set the value to the same as for the batch, since it should be enforced by batcher, but don't want to exceed it for the block
         config.batcher_config.interop_roots_per_batch_limit,
         config.sequencer_config.service_block_delay,
         current_protocol_version.clone(),
@@ -714,8 +827,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         last_constructed_block_ctx_sender,
         fee_provider,
     );
-
-    // ========== Start L1 Upgrade Watcher ===========
 
     runtime.spawn_critical_task(
         "l1 upgrade transaction watcher",
@@ -731,8 +842,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         .expect("failed to start L1 upgrade transaction watcher")
         .run(),
     );
-
-    // ========== Start L1 Persist Batch Watcher ===========
 
     let persistent_batch_storage =
         ExecutedBatchStorage::new(&config.general_config.rocks_db_path.join(BATCH_DB_NAME));
@@ -756,17 +865,12 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         .run(),
     );
 
-    // ========== Start Sequencer ===========
-    let repositories_clone = repositories.clone();
-    runtime.spawn_critical_task(
-        "repository persist loop",
-        repositories_clone.local().run_persist_loop(),
-    );
-    let state_clone = state.clone();
-    runtime.spawn_critical_task(
-        "state compact loop",
-        state_clone.local().compact_periodically_optional(),
-    );
+    if let Some(repository_persist_task) = repository_persist_task {
+        runtime.spawn_critical_task("repository persist loop", repository_persist_task);
+    }
+    if let Some(state_compaction_task) = state_compaction_task {
+        runtime.spawn_critical_task("state compact loop", state_compaction_task);
+    }
 
     if node_role.is_main() {
         let external_price_api_client_config = config
@@ -836,7 +940,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
     }
 
     if node_role.is_main() {
-        // Main Node
         run_main_node_pipeline(
             &config,
             sl_provider.clone(),
@@ -858,7 +961,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         )
         .await;
     } else {
-        // External Node
         run_en_pipeline(
             &config,
             replays_for_sequencer,
@@ -875,9 +977,8 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
             chain_id,
         )
         .await;
-    };
+    }
 
-    // ======== Start Status Server ========
     if config.status_server_config.enabled {
         let addr: SocketAddr = config
             .status_server_config
@@ -889,7 +990,6 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         });
     }
 
-    // =========== Start JSON RPC ========
     zksync_os_rpc::spawn(
         config.rpc_config.into(),
         chain_id,
@@ -901,7 +1001,7 @@ pub async fn run<State: ReadStateHistory + WriteState + StateInitializer + Clone
         tx_acceptance_state_receiver,
         last_constructed_block_ctx_receiver,
         main_node_provider,
-        gateway_provider.map(|p| p.erased()),
+        gateway_provider,
         runtime,
     )
     .await
@@ -1415,11 +1515,11 @@ fn determine_starting_block(
 
 /// Finds the last block number where the local node's block hash matches the main node's block hash.
 async fn find_last_matching_main_node_block(
-    repo: &RepositoryManager,
+    repo: &dyn ReadRepository,
     main_node_rpc_url: &str,
 ) -> anyhow::Result<u64> {
     async fn check(
-        repo: &RepositoryManager,
+        repo: &dyn ReadRepository,
         main_node_client: &HttpClient,
         block_number: u64,
     ) -> anyhow::Result<bool> {

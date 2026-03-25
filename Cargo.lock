@@ -14882,6 +14882,7 @@ dependencies = [
  "tracing",
  "zksync_os_interface",
  "zksync_os_rpc_api",
+ "zksync_os_storage",
  "zksync_os_storage_api",
  "zksync_os_types",
 ]

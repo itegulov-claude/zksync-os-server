@@ -238,10 +238,7 @@ pub struct GeneralConfig {
     pub blocks_to_retain_in_memory: usize,
 
     /// **IMPORTANT: It must be set for an external node. However, setting this DOES NOT make the node into an external node.
-    /// [`GeneralConfig::node_role`] is the source of truth for node type.**
-    ///
-    /// When set, JSON-RPC simulation endpoints can use this node as a remote fork source for
-    /// external-node sync.
+    /// [`GeneralConfig::node_role`] is the source of truth for node type. **
     #[config(default_t = None)]
     pub main_node_rpc_url: Option<String>,
 

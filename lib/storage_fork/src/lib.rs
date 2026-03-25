@@ -1,36 +1,45 @@
-use alloy::eips::BlockHashOrNumber;
+use alloy::eips::{BlockHashOrNumber, Encodable2718};
 use alloy::primitives::{Address, B256, BlockNumber, TxHash, TxNonce};
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::ops::RangeInclusive;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
+use tokio::sync::broadcast;
 use zksync_os_interface::traits::{PreimageSource, ReadStorage};
+use zksync_os_interface::types::{BlockContext, BlockOutput, StorageWrite};
 use zksync_os_rpc_api::unstable::UnstableApiClient;
+use zksync_os_storage::in_memory::RepositoryInMemory;
 use zksync_os_storage_api::notifications::{BlockNotification, SubscribeToBlocks};
 use zksync_os_storage_api::{
-    ReadReplay, ReadRepository, ReadStateHistory, ReplayRecord, RepositoryBlock, RepositoryResult,
-    StateError, StateResult, StoredTxData, TxMeta, ViewState, WriteReplay, WriteRepository,
-    WriteState,
+    ReadReplay, ReadRepository, ReadStateHistory, ReplayRecord, RepositoryResult, StateError,
+    StateResult, StoredTxData, TxMeta, WriteReplay, WriteRepository, WriteState,
 };
 use zksync_os_types::{ZkReceiptEnvelope, ZkTransaction};
+
+const BLOCK_NOTIFICATION_CHANNEL_SIZE: usize = 256;
+
+#[derive(Clone, Copy, Debug)]
+pub struct ForkSnapshot {
+    pub latest_block_number: BlockNumber,
+    pub latest_replay_record_number: BlockNumber,
+}
 
 pub trait RemoteForkSource: fmt::Debug + Send + Sync {
     fn read_value(&self, block_number: BlockNumber, key: B256) -> StateResult<Option<B256>>;
     fn read_preimage(&self, hash: B256) -> StateResult<Option<Vec<u8>>>;
-    fn get_repository_block(&self, block: BlockHashOrNumber) -> Option<RepositoryBlock>;
-    fn get_raw_transaction(&self, hash: TxHash) -> Option<Vec<u8>>;
-    fn get_transaction(&self, hash: TxHash) -> Option<ZkTransaction>;
-    fn get_transaction_receipt(&self, hash: TxHash) -> Option<ZkReceiptEnvelope>;
-    fn get_transaction_meta(&self, hash: TxHash) -> Option<TxMeta>;
+    fn get_repository_block(
+        &self,
+        block: BlockHashOrNumber,
+    ) -> Option<zksync_os_storage_api::RepositoryBlock>;
     fn get_transaction_hash_by_sender_nonce(
         &self,
         sender: Address,
         nonce: TxNonce,
     ) -> Option<TxHash>;
     fn get_stored_transaction(&self, hash: TxHash) -> Option<StoredTxData>;
-    fn get_latest_block(&self) -> Option<BlockNumber>;
     fn get_replay_record(&self, block_number: BlockNumber) -> Option<ReplayRecord>;
-    fn get_latest_replay_record(&self) -> Option<BlockNumber>;
 }
 
 #[derive(Debug)]
@@ -49,6 +58,36 @@ impl RemoteForkClient {
             client,
             runtime: Mutex::new(runtime),
         })
+    }
+
+    pub fn snapshot(&self) -> anyhow::Result<ForkSnapshot> {
+        let latest_block_number = self.with_runtime_result(
+            self.client.get_latest_block_number(),
+            "latest remote fork block number",
+        )?;
+        let latest_replay_record_number = self.with_runtime_result(
+            self.client.get_latest_replay_record_number(),
+            "latest remote fork replay record number",
+        )?;
+
+        Ok(ForkSnapshot {
+            latest_block_number,
+            latest_replay_record_number,
+        })
+    }
+
+    fn with_runtime_result<Output>(
+        &self,
+        future: impl std::future::Future<Output = Result<Output, jsonrpsee::core::ClientError>>,
+        action: &'static str,
+    ) -> anyhow::Result<Output> {
+        let runtime = self
+            .runtime
+            .lock()
+            .expect("remote fork runtime lock is poisoned");
+        runtime
+            .block_on(future)
+            .map_err(|err| anyhow::anyhow!("failed to fetch {action}: {err}"))
     }
 
     fn with_runtime<Output>(
@@ -72,62 +111,30 @@ impl RemoteForkClient {
 
 impl RemoteForkSource for RemoteForkClient {
     fn read_value(&self, block_number: BlockNumber, key: B256) -> StateResult<Option<B256>> {
-        let runtime = self
-            .runtime
-            .lock()
-            .expect("remote fork runtime lock is poisoned");
-        runtime
-            .block_on(self.client.get_storage_value(block_number, key))
-            .map_err(|err| {
-                tracing::warn!(block_number, ?key, %err, "failed to fetch remote fork storage value");
-                StateError::NotFound(block_number)
-            })
+        self.with_runtime(self.client.get_storage_value(block_number, key), |err| {
+            tracing::warn!(
+                block_number,
+                ?key,
+                %err,
+                "failed to fetch remote fork storage value"
+            );
+        })
+        .ok_or(StateError::NotFound(block_number))
     }
 
     fn read_preimage(&self, hash: B256) -> StateResult<Option<Vec<u8>>> {
-        let runtime = self
-            .runtime
-            .lock()
-            .expect("remote fork runtime lock is poisoned");
-        runtime
-            .block_on(self.client.get_preimage(hash))
-            .map_err(|err| {
-                tracing::warn!(?hash, %err, "failed to fetch remote fork preimage");
-                StateError::NotFound(0)
-            })
+        self.with_runtime(self.client.get_preimage(hash), |err| {
+            tracing::warn!(?hash, %err, "failed to fetch remote fork preimage");
+        })
+        .ok_or(StateError::NotFound(0))
     }
 
-    fn get_repository_block(&self, block: BlockHashOrNumber) -> Option<RepositoryBlock> {
+    fn get_repository_block(
+        &self,
+        block: BlockHashOrNumber,
+    ) -> Option<zksync_os_storage_api::RepositoryBlock> {
         self.with_runtime(self.client.get_repository_block(block), |err| {
             tracing::warn!(?block, %err, "failed to fetch remote fork block");
-        })
-        .flatten()
-    }
-
-    fn get_raw_transaction(&self, hash: TxHash) -> Option<Vec<u8>> {
-        self.with_runtime(self.client.get_raw_transaction(hash), |err| {
-            tracing::warn!(?hash, %err, "failed to fetch remote fork raw transaction");
-        })
-        .flatten()
-    }
-
-    fn get_transaction(&self, hash: TxHash) -> Option<ZkTransaction> {
-        self.with_runtime(self.client.get_transaction(hash), |err| {
-            tracing::warn!(?hash, %err, "failed to fetch remote fork transaction");
-        })
-        .flatten()
-    }
-
-    fn get_transaction_receipt(&self, hash: TxHash) -> Option<ZkReceiptEnvelope> {
-        self.with_runtime(self.client.get_transaction_receipt(hash), |err| {
-            tracing::warn!(?hash, %err, "failed to fetch remote fork receipt");
-        })
-        .flatten()
-    }
-
-    fn get_transaction_meta(&self, hash: TxHash) -> Option<TxMeta> {
-        self.with_runtime(self.client.get_transaction_meta(hash), |err| {
-            tracing::warn!(?hash, %err, "failed to fetch remote fork transaction meta");
         })
         .flatten()
     }
@@ -159,92 +166,198 @@ impl RemoteForkSource for RemoteForkClient {
         .flatten()
     }
 
-    fn get_latest_block(&self) -> Option<BlockNumber> {
-        self.with_runtime(self.client.get_latest_block_number(), |err| {
-            tracing::warn!(%err, "failed to fetch remote fork latest block number");
-        })
-    }
-
     fn get_replay_record(&self, block_number: BlockNumber) -> Option<ReplayRecord> {
         self.with_runtime(self.client.get_replay_record(block_number), |err| {
             tracing::warn!(block_number, %err, "failed to fetch remote fork replay record");
         })
         .flatten()
     }
-
-    fn get_latest_replay_record(&self) -> Option<BlockNumber> {
-        self.with_runtime(self.client.get_latest_replay_record_number(), |err| {
-            tracing::warn!(%err, "failed to fetch remote fork latest replay record");
-        })
-    }
 }
 
 #[derive(Clone, Debug)]
-pub struct ForkedRepository<Local> {
-    local: Local,
-    remote_fork: Arc<dyn RemoteForkSource>,
+struct LocalRepository {
+    repository: RepositoryInMemory,
+    block_sender: broadcast::Sender<BlockNotification>,
 }
 
-impl<Local> ForkedRepository<Local> {
-    pub fn new(local: Local, remote_fork: Arc<dyn RemoteForkSource>) -> Self {
-        Self { local, remote_fork }
-    }
-
-    pub fn local(&self) -> Local
-    where
-        Local: Clone,
-    {
-        self.local.clone()
+impl LocalRepository {
+    fn new(genesis_block: zksync_os_storage_api::RepositoryBlock) -> Self {
+        let (block_sender, _) = broadcast::channel(BLOCK_NOTIFICATION_CHANNEL_SIZE);
+        Self {
+            repository: RepositoryInMemory::new(genesis_block),
+            block_sender,
+        }
     }
 }
 
-impl<Local: ReadRepository> ReadRepository for ForkedRepository<Local> {
+impl ReadRepository for LocalRepository {
     fn get_block_by_number(
         &self,
         number: BlockNumber,
-    ) -> RepositoryResult<Option<RepositoryBlock>> {
-        Ok(self
-            .local
-            .get_block_by_number(number)?
-            .or_else(|| self.remote_fork.get_repository_block(number.into())))
+    ) -> RepositoryResult<Option<zksync_os_storage_api::RepositoryBlock>> {
+        self.repository.get_block_by_number(number)
     }
 
     fn get_block_by_hash(
         &self,
         hash: alloy::primitives::BlockHash,
-    ) -> RepositoryResult<Option<RepositoryBlock>> {
-        Ok(self
-            .local
-            .get_block_by_hash(hash)?
-            .or_else(|| self.remote_fork.get_repository_block(hash.into())))
+    ) -> RepositoryResult<Option<zksync_os_storage_api::RepositoryBlock>> {
+        self.repository.get_block_by_hash(hash)
     }
 
     fn get_raw_transaction(&self, hash: TxHash) -> RepositoryResult<Option<Vec<u8>>> {
-        Ok(self
-            .local
-            .get_raw_transaction(hash)?
-            .or_else(|| self.remote_fork.get_raw_transaction(hash)))
+        self.repository.get_raw_transaction(hash)
     }
 
     fn get_transaction(&self, hash: TxHash) -> RepositoryResult<Option<ZkTransaction>> {
-        Ok(self
-            .local
-            .get_transaction(hash)?
-            .or_else(|| self.remote_fork.get_transaction(hash)))
+        self.repository.get_transaction(hash)
     }
 
     fn get_transaction_receipt(&self, hash: TxHash) -> RepositoryResult<Option<ZkReceiptEnvelope>> {
-        Ok(self
-            .local
-            .get_transaction_receipt(hash)?
-            .or_else(|| self.remote_fork.get_transaction_receipt(hash)))
+        self.repository.get_transaction_receipt(hash)
     }
 
     fn get_transaction_meta(&self, hash: TxHash) -> RepositoryResult<Option<TxMeta>> {
+        self.repository.get_transaction_meta(hash)
+    }
+
+    fn get_transaction_hash_by_sender_nonce(
+        &self,
+        sender: Address,
+        nonce: TxNonce,
+    ) -> RepositoryResult<Option<TxHash>> {
+        self.repository
+            .get_transaction_hash_by_sender_nonce(sender, nonce)
+    }
+
+    fn get_stored_transaction(&self, hash: TxHash) -> RepositoryResult<Option<StoredTxData>> {
+        self.repository.get_stored_transaction(hash)
+    }
+
+    fn get_latest_block(&self) -> u64 {
+        self.repository.get_latest_block()
+    }
+}
+
+impl WriteRepository for LocalRepository {
+    async fn populate(
+        &self,
+        block_output: BlockOutput,
+        transactions: Vec<ZkTransaction>,
+    ) -> RepositoryResult<()> {
+        let block_number = block_output.header.number;
+        let latest_block = self.repository.get_latest_block();
+        if block_number <= latest_block {
+            return Ok(());
+        }
+        assert_eq!(
+            block_number,
+            latest_block + 1,
+            "forked repository local view must be contiguous: got {block_number}, expected {}",
+            latest_block + 1
+        );
+
+        let (block, transactions) = self
+            .repository
+            .populate_in_memory(block_output, transactions);
+        let _ = self.block_sender.send(BlockNotification {
+            block,
+            transactions,
+        });
+        Ok(())
+    }
+}
+
+impl SubscribeToBlocks for LocalRepository {
+    fn subscribe_to_blocks(&self) -> broadcast::Receiver<BlockNotification> {
+        self.block_sender.subscribe()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ForkedRepository {
+    local: LocalRepository,
+    remote_fork: Arc<dyn RemoteForkSource>,
+    fork_block_number: BlockNumber,
+}
+
+impl ForkedRepository {
+    pub fn new(
+        genesis_block: zksync_os_storage_api::RepositoryBlock,
+        fork_block_number: BlockNumber,
+        remote_fork: Arc<dyn RemoteForkSource>,
+    ) -> Self {
+        Self {
+            local: LocalRepository::new(genesis_block),
+            remote_fork,
+            fork_block_number,
+        }
+    }
+
+    fn remote_block_by_hash(
+        &self,
+        hash: alloy::primitives::BlockHash,
+    ) -> Option<zksync_os_storage_api::RepositoryBlock> {
+        self.remote_fork
+            .get_repository_block(hash.into())
+            .filter(|block| block.number <= self.fork_block_number)
+    }
+
+    fn remote_stored_transaction_before_fork(&self, hash: TxHash) -> Option<StoredTxData> {
+        self.remote_fork
+            .get_stored_transaction(hash)
+            .filter(|stored| stored.meta.block_number <= self.fork_block_number)
+    }
+}
+
+impl ReadRepository for ForkedRepository {
+    fn get_block_by_number(
+        &self,
+        number: BlockNumber,
+    ) -> RepositoryResult<Option<zksync_os_storage_api::RepositoryBlock>> {
+        Ok(self.local.get_block_by_number(number)?.or_else(|| {
+            (number <= self.fork_block_number)
+                .then(|| self.remote_fork.get_repository_block(number.into()))
+                .flatten()
+        }))
+    }
+
+    fn get_block_by_hash(
+        &self,
+        hash: alloy::primitives::BlockHash,
+    ) -> RepositoryResult<Option<zksync_os_storage_api::RepositoryBlock>> {
         Ok(self
             .local
-            .get_transaction_meta(hash)?
-            .or_else(|| self.remote_fork.get_transaction_meta(hash)))
+            .get_block_by_hash(hash)?
+            .or_else(|| self.remote_block_by_hash(hash)))
+    }
+
+    fn get_raw_transaction(&self, hash: TxHash) -> RepositoryResult<Option<Vec<u8>>> {
+        Ok(self.local.get_raw_transaction(hash)?.or_else(|| {
+            self.remote_stored_transaction_before_fork(hash)
+                .map(|stored| stored.tx.into_envelope().encoded_2718())
+        }))
+    }
+
+    fn get_transaction(&self, hash: TxHash) -> RepositoryResult<Option<ZkTransaction>> {
+        Ok(self.local.get_transaction(hash)?.or_else(|| {
+            self.remote_stored_transaction_before_fork(hash)
+                .map(|stored| stored.tx)
+        }))
+    }
+
+    fn get_transaction_receipt(&self, hash: TxHash) -> RepositoryResult<Option<ZkReceiptEnvelope>> {
+        Ok(self.local.get_transaction_receipt(hash)?.or_else(|| {
+            self.remote_stored_transaction_before_fork(hash)
+                .map(|stored| stored.receipt)
+        }))
+    }
+
+    fn get_transaction_meta(&self, hash: TxHash) -> RepositoryResult<Option<TxMeta>> {
+        Ok(self.local.get_transaction_meta(hash)?.or_else(|| {
+            self.remote_stored_transaction_before_fork(hash)
+                .map(|stored| stored.meta)
+        }))
     }
 
     fn get_transaction_hash_by_sender_nonce(
@@ -258,6 +371,7 @@ impl<Local: ReadRepository> ReadRepository for ForkedRepository<Local> {
             .or_else(|| {
                 self.remote_fork
                     .get_transaction_hash_by_sender_nonce(sender, nonce)
+                    .filter(|hash| self.remote_stored_transaction_before_fork(*hash).is_some())
             }))
     }
 
@@ -265,191 +379,135 @@ impl<Local: ReadRepository> ReadRepository for ForkedRepository<Local> {
         Ok(self
             .local
             .get_stored_transaction(hash)?
-            .or_else(|| self.remote_fork.get_stored_transaction(hash)))
+            .or_else(|| self.remote_stored_transaction_before_fork(hash)))
     }
 
     fn get_latest_block(&self) -> u64 {
-        self.remote_fork.get_latest_block().map_or_else(
-            || self.local.get_latest_block(),
-            |remote| remote.max(self.local.get_latest_block()),
-        )
+        self.local.get_latest_block().max(self.fork_block_number)
     }
 
     fn get_earliest_block(&self) -> u64 {
-        self.local.get_earliest_block()
+        0
     }
 }
 
-impl<Local: WriteRepository> WriteRepository for ForkedRepository<Local> {
+impl WriteRepository for ForkedRepository {
     async fn populate(
         &self,
-        block_output: zksync_os_interface::types::BlockOutput,
+        block_output: BlockOutput,
         transactions: Vec<ZkTransaction>,
     ) -> RepositoryResult<()> {
         self.local.populate(block_output, transactions).await
     }
 }
 
-impl<Local: SubscribeToBlocks> SubscribeToBlocks for ForkedRepository<Local> {
-    fn subscribe_to_blocks(&self) -> tokio::sync::broadcast::Receiver<BlockNotification> {
+impl SubscribeToBlocks for ForkedRepository {
+    fn subscribe_to_blocks(&self) -> broadcast::Receiver<BlockNotification> {
         self.local.subscribe_to_blocks()
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum RepositoryStorage<Local> {
-    Local(Local),
-    Forked(ForkedRepository<Local>),
+struct LocalReplayStorage {
+    records: Arc<RwLock<BTreeMap<BlockNumber, ReplayRecord>>>,
+    latest_record: Arc<AtomicU64>,
 }
 
-impl<Local> RepositoryStorage<Local> {
-    pub fn new(local: Local) -> Self {
-        Self::Local(local)
-    }
-
-    pub fn forked(local: Local, remote_fork: Arc<dyn RemoteForkSource>) -> Self {
-        Self::Forked(ForkedRepository::new(local, remote_fork))
-    }
-
-    pub fn local(&self) -> Local
-    where
-        Local: Clone,
-    {
-        match self {
-            Self::Local(local) => local.clone(),
-            Self::Forked(forked) => forked.local(),
+impl LocalReplayStorage {
+    fn new(genesis_record: ReplayRecord) -> Self {
+        let mut records = BTreeMap::new();
+        records.insert(0, genesis_record);
+        Self {
+            records: Arc::new(RwLock::new(records)),
+            latest_record: Arc::new(AtomicU64::new(0)),
         }
     }
 }
 
-impl<Local: ReadRepository> ReadRepository for RepositoryStorage<Local> {
-    fn get_block_by_number(
+impl ReadReplay for LocalReplayStorage {
+    fn get_context(&self, block_number: BlockNumber) -> Option<BlockContext> {
+        self.records
+            .read()
+            .expect("local replay storage lock is poisoned")
+            .get(&block_number)
+            .map(|record| record.block_context)
+    }
+
+    fn get_replay_record_by_key(
         &self,
-        number: BlockNumber,
-    ) -> RepositoryResult<Option<RepositoryBlock>> {
-        match self {
-            Self::Local(local) => local.get_block_by_number(number),
-            Self::Forked(forked) => forked.get_block_by_number(number),
-        }
+        block_number: BlockNumber,
+        _db_key: Option<Vec<u8>>,
+    ) -> Option<ReplayRecord> {
+        self.records
+            .read()
+            .expect("local replay storage lock is poisoned")
+            .get(&block_number)
+            .cloned()
     }
 
-    fn get_block_by_hash(
-        &self,
-        hash: alloy::primitives::BlockHash,
-    ) -> RepositoryResult<Option<RepositoryBlock>> {
-        match self {
-            Self::Local(local) => local.get_block_by_hash(hash),
-            Self::Forked(forked) => forked.get_block_by_hash(hash),
-        }
-    }
-
-    fn get_raw_transaction(&self, hash: TxHash) -> RepositoryResult<Option<Vec<u8>>> {
-        match self {
-            Self::Local(local) => local.get_raw_transaction(hash),
-            Self::Forked(forked) => forked.get_raw_transaction(hash),
-        }
-    }
-
-    fn get_transaction(&self, hash: TxHash) -> RepositoryResult<Option<ZkTransaction>> {
-        match self {
-            Self::Local(local) => local.get_transaction(hash),
-            Self::Forked(forked) => forked.get_transaction(hash),
-        }
-    }
-
-    fn get_transaction_receipt(&self, hash: TxHash) -> RepositoryResult<Option<ZkReceiptEnvelope>> {
-        match self {
-            Self::Local(local) => local.get_transaction_receipt(hash),
-            Self::Forked(forked) => forked.get_transaction_receipt(hash),
-        }
-    }
-
-    fn get_transaction_meta(&self, hash: TxHash) -> RepositoryResult<Option<TxMeta>> {
-        match self {
-            Self::Local(local) => local.get_transaction_meta(hash),
-            Self::Forked(forked) => forked.get_transaction_meta(hash),
-        }
-    }
-
-    fn get_transaction_hash_by_sender_nonce(
-        &self,
-        sender: Address,
-        nonce: TxNonce,
-    ) -> RepositoryResult<Option<TxHash>> {
-        match self {
-            Self::Local(local) => local.get_transaction_hash_by_sender_nonce(sender, nonce),
-            Self::Forked(forked) => forked.get_transaction_hash_by_sender_nonce(sender, nonce),
-        }
-    }
-
-    fn get_stored_transaction(&self, hash: TxHash) -> RepositoryResult<Option<StoredTxData>> {
-        match self {
-            Self::Local(local) => local.get_stored_transaction(hash),
-            Self::Forked(forked) => forked.get_stored_transaction(hash),
-        }
-    }
-
-    fn get_latest_block(&self) -> u64 {
-        match self {
-            Self::Local(local) => local.get_latest_block(),
-            Self::Forked(forked) => forked.get_latest_block(),
-        }
-    }
-
-    fn get_earliest_block(&self) -> u64 {
-        match self {
-            Self::Local(local) => local.get_earliest_block(),
-            Self::Forked(forked) => forked.get_earliest_block(),
-        }
+    fn latest_record(&self) -> BlockNumber {
+        self.latest_record.load(Ordering::Relaxed)
     }
 }
 
-impl<Local: WriteRepository> WriteRepository for RepositoryStorage<Local> {
-    async fn populate(
+impl WriteReplay for LocalReplayStorage {
+    fn write(
         &self,
-        block_output: zksync_os_interface::types::BlockOutput,
-        transactions: Vec<ZkTransaction>,
-    ) -> RepositoryResult<()> {
-        match self {
-            Self::Local(local) => local.populate(block_output, transactions).await,
-            Self::Forked(forked) => forked.populate(block_output, transactions).await,
-        }
-    }
-}
+        record: alloy::primitives::Sealed<ReplayRecord>,
+        override_allowed: bool,
+    ) -> bool {
+        let block_number = record.block_context.block_number;
+        let mut records = self
+            .records
+            .write()
+            .expect("local replay storage lock is poisoned");
+        let latest_record = self.latest_record.load(Ordering::Relaxed);
 
-impl<Local: SubscribeToBlocks> SubscribeToBlocks for RepositoryStorage<Local> {
-    fn subscribe_to_blocks(&self) -> tokio::sync::broadcast::Receiver<BlockNotification> {
-        match self {
-            Self::Local(local) => local.subscribe_to_blocks(),
-            Self::Forked(forked) => forked.subscribe_to_blocks(),
+        if override_allowed && block_number <= latest_record {
+            records.split_off(&block_number);
+            self.latest_record
+                .store(block_number.saturating_sub(1), Ordering::Relaxed);
+        } else if block_number <= latest_record {
+            return false;
         }
+
+        let latest_record = self.latest_record.load(Ordering::Relaxed);
+        assert_eq!(
+            block_number,
+            latest_record + 1,
+            "forked replay local view must be contiguous: got {block_number}, expected {}",
+            latest_record + 1
+        );
+
+        records.insert(block_number, record.into_parts().0);
+        self.latest_record.store(block_number, Ordering::Relaxed);
+        true
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ForkedReplayStorage<Local> {
-    local: Local,
+pub struct ForkedReplayStorage {
+    local: LocalReplayStorage,
     remote_fork: Arc<dyn RemoteForkSource>,
+    fork_replay_record_number: BlockNumber,
 }
 
-impl<Local> ForkedReplayStorage<Local> {
-    pub fn new(local: Local, remote_fork: Arc<dyn RemoteForkSource>) -> Self {
-        Self { local, remote_fork }
-    }
-
-    pub fn local(&self) -> Local
-    where
-        Local: Clone,
-    {
-        self.local.clone()
+impl ForkedReplayStorage {
+    pub fn new(
+        genesis_record: ReplayRecord,
+        fork_replay_record_number: BlockNumber,
+        remote_fork: Arc<dyn RemoteForkSource>,
+    ) -> Self {
+        Self {
+            local: LocalReplayStorage::new(genesis_record),
+            remote_fork,
+            fork_replay_record_number,
+        }
     }
 }
 
-impl<Local: ReadReplay> ReadReplay for ForkedReplayStorage<Local> {
-    fn get_context(
-        &self,
-        block_number: BlockNumber,
-    ) -> Option<zksync_os_interface::types::BlockContext> {
+impl ReadReplay for ForkedReplayStorage {
+    fn get_context(&self, block_number: BlockNumber) -> Option<BlockContext> {
         self.get_replay_record(block_number)
             .map(|record| record.block_context)
     }
@@ -461,18 +519,21 @@ impl<Local: ReadReplay> ReadReplay for ForkedReplayStorage<Local> {
     ) -> Option<ReplayRecord> {
         self.local
             .get_replay_record_by_key(block_number, db_key)
-            .or_else(|| self.remote_fork.get_replay_record(block_number))
+            .or_else(|| {
+                (block_number <= self.fork_replay_record_number)
+                    .then(|| self.remote_fork.get_replay_record(block_number))
+                    .flatten()
+            })
     }
 
     fn latest_record(&self) -> BlockNumber {
-        self.remote_fork.get_latest_replay_record().map_or_else(
-            || self.local.latest_record(),
-            |remote| remote.max(self.local.latest_record()),
-        )
+        self.local
+            .latest_record()
+            .max(self.fork_replay_record_number)
     }
 }
 
-impl<Local: WriteReplay> WriteReplay for ForkedReplayStorage<Local> {
+impl WriteReplay for ForkedReplayStorage {
     fn write(
         &self,
         record: alloy::primitives::Sealed<ReplayRecord>,
@@ -483,124 +544,280 @@ impl<Local: WriteReplay> WriteReplay for ForkedReplayStorage<Local> {
 }
 
 #[derive(Clone, Debug)]
-pub enum ReplayStorage<Local> {
-    Local(Local),
-    Forked(ForkedReplayStorage<Local>),
+struct LocalStateHistory {
+    storage: Arc<RwLock<HashMap<B256, Vec<(BlockNumber, B256)>>>>,
+    preimages: Arc<RwLock<HashMap<B256, Vec<u8>>>>,
+    latest_block: Arc<AtomicU64>,
 }
 
-impl<Local> ReplayStorage<Local> {
-    pub fn new(local: Local) -> Self {
-        Self::Local(local)
-    }
+impl LocalStateHistory {
+    fn new(
+        genesis_storage_logs: impl IntoIterator<Item = (B256, B256)>,
+        genesis_preimages: impl IntoIterator<Item = (B256, Vec<u8>)>,
+    ) -> Self {
+        let mut storage = HashMap::new();
+        for (key, value) in genesis_storage_logs.into_iter() {
+            storage.entry(key).or_insert_with(Vec::new).push((0, value));
+        }
 
-    pub fn forked(local: Local, remote_fork: Arc<dyn RemoteForkSource>) -> Self {
-        Self::Forked(ForkedReplayStorage::new(local, remote_fork))
-    }
+        let preimages = genesis_preimages.into_iter().collect();
 
-    pub fn local(&self) -> Local
-    where
-        Local: Clone,
-    {
-        match self {
-            Self::Local(local) => local.clone(),
-            Self::Forked(forked) => forked.local(),
+        Self {
+            storage: Arc::new(RwLock::new(storage)),
+            preimages: Arc::new(RwLock::new(preimages)),
+            latest_block: Arc::new(AtomicU64::new(0)),
         }
     }
-}
 
-impl<Local: ReadReplay> ReadReplay for ReplayStorage<Local> {
-    fn get_context(
-        &self,
+    fn latest_block(&self) -> BlockNumber {
+        self.latest_block.load(Ordering::Relaxed)
+    }
+
+    fn read_at(&self, block_number: BlockNumber, key: B256) -> Option<B256> {
+        let storage = self
+            .storage
+            .read()
+            .expect("local state storage lock is poisoned");
+        Self::read_from_storage(&storage, block_number, key)
+    }
+
+    fn read_from_storage(
+        storage: &HashMap<B256, Vec<(BlockNumber, B256)>>,
         block_number: BlockNumber,
-    ) -> Option<zksync_os_interface::types::BlockContext> {
-        match self {
-            Self::Local(local) => local.get_context(block_number),
-            Self::Forked(forked) => forked.get_context(block_number),
-        }
-    }
-
-    fn get_replay_record_by_key(
-        &self,
-        block_number: BlockNumber,
-        db_key: Option<Vec<u8>>,
-    ) -> Option<ReplayRecord> {
-        match self {
-            Self::Local(local) => local.get_replay_record_by_key(block_number, db_key),
-            Self::Forked(forked) => forked.get_replay_record_by_key(block_number, db_key),
-        }
-    }
-
-    fn latest_record(&self) -> BlockNumber {
-        match self {
-            Self::Local(local) => local.latest_record(),
-            Self::Forked(forked) => forked.latest_record(),
-        }
-    }
-}
-
-impl<Local: WriteReplay> WriteReplay for ReplayStorage<Local> {
-    fn write(
-        &self,
-        record: alloy::primitives::Sealed<ReplayRecord>,
-        override_allowed: bool,
-    ) -> bool {
-        match self {
-            Self::Local(local) => local.write(record, override_allowed),
-            Self::Forked(forked) => forked.write(record, override_allowed),
+        key: B256,
+    ) -> Option<B256> {
+        let entries = storage.get(&key)?;
+        match entries.binary_search_by_key(&block_number, |(block, _)| *block) {
+            Ok(index) => Some(entries[index].1),
+            Err(0) => None,
+            Err(index) => Some(entries[index - 1].1),
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ForkedStateHistory<Local> {
-    local: Local,
-    remote_fork: Arc<dyn RemoteForkSource>,
+struct LocalStateView {
+    storage: Arc<RwLock<HashMap<B256, Vec<(BlockNumber, B256)>>>>,
+    preimages: Arc<RwLock<HashMap<B256, Vec<u8>>>>,
+    block_number: BlockNumber,
 }
 
-impl<Local> ForkedStateHistory<Local> {
-    pub fn new(local: Local, remote_fork: Arc<dyn RemoteForkSource>) -> Self {
-        Self { local, remote_fork }
-    }
-
-    pub fn local(&self) -> Local
-    where
-        Local: Clone,
-    {
-        self.local.clone()
+impl ReadStorage for LocalStateView {
+    fn read(&mut self, key: B256) -> Option<B256> {
+        let storage = self
+            .storage
+            .read()
+            .expect("local state storage lock is poisoned");
+        LocalStateHistory::read_from_storage(&storage, self.block_number, key)
     }
 }
 
-impl<Local: ReadStateHistory> ReadStateHistory for ForkedStateHistory<Local> {
+impl PreimageSource for LocalStateView {
+    fn get_preimage(&mut self, hash: B256) -> Option<Vec<u8>> {
+        self.preimages
+            .read()
+            .expect("local state preimages lock is poisoned")
+            .get(&hash)
+            .cloned()
+    }
+}
+
+impl ReadStateHistory for LocalStateHistory {
     fn state_view_at(
         &self,
         block_number: BlockNumber,
     ) -> StateResult<impl ReadStorage + PreimageSource + Clone> {
-        let local_state = match self.local.state_view_at(block_number) {
-            Ok(state) => Some(state),
-            Err(StateError::Compacted(_) | StateError::NotFound(_)) => None,
-        };
+        if block_number > self.latest_block() {
+            return Err(StateError::NotFound(block_number));
+        }
 
-        Ok(ForkedStateView {
-            local_state,
+        Ok(LocalStateView {
+            storage: self.storage.clone(),
+            preimages: self.preimages.clone(),
             block_number,
-            remote_fork: self.remote_fork.clone(),
         })
     }
 
     fn block_range_available(&self) -> RangeInclusive<u64> {
-        let local_range = self.local.block_range_available();
-        0..=self
-            .remote_fork
-            .get_latest_block()
-            .map_or(*local_range.end(), |remote| remote.max(*local_range.end()))
+        0..=self.latest_block()
     }
 }
 
-impl<Local: WriteState> WriteState for ForkedStateHistory<Local> {
+impl WriteState for LocalStateHistory {
     fn add_block_result<'a, J>(
         &self,
         block_number: u64,
-        storage_diffs: Vec<zksync_os_interface::types::StorageWrite>,
+        storage_diffs: Vec<StorageWrite>,
+        new_preimages: J,
+        override_allowed: bool,
+    ) -> anyhow::Result<()>
+    where
+        J: IntoIterator<Item = (B256, &'a Vec<u8>)>,
+    {
+        let mut latest_block = self.latest_block();
+
+        if override_allowed && block_number <= latest_block {
+            let mut storage = self
+                .storage
+                .write()
+                .expect("local state storage lock is poisoned");
+            storage.retain(|_, entries| {
+                entries.retain(|(written_at, _)| *written_at < block_number);
+                !entries.is_empty()
+            });
+            latest_block = block_number.saturating_sub(1);
+            self.latest_block.store(latest_block, Ordering::Relaxed);
+        }
+
+        if !override_allowed && block_number != 0 {
+            if block_number <= latest_block {
+                for write in storage_diffs {
+                    let expected_value = self.read_at(block_number, write.key).unwrap_or_default();
+                    assert_eq!(
+                        expected_value, write.value,
+                        "historical write discrepancy for key={} at block_number={block_number}",
+                        write.key
+                    );
+                }
+                return Ok(());
+            }
+
+            assert_eq!(
+                block_number,
+                latest_block + 1,
+                "forked state local view must be contiguous: got {block_number}, expected {}",
+                latest_block + 1
+            );
+        }
+
+        let per_key: HashMap<B256, B256> = storage_diffs
+            .into_iter()
+            .map(|write| (write.key, write.value))
+            .collect();
+        {
+            let mut storage = self
+                .storage
+                .write()
+                .expect("local state storage lock is poisoned");
+            for (key, value) in per_key {
+                storage.entry(key).or_default().push((block_number, value));
+            }
+        }
+        {
+            let mut preimages = self
+                .preimages
+                .write()
+                .expect("local state preimages lock is poisoned");
+            for (hash, preimage) in new_preimages {
+                preimages.insert(hash, preimage.clone());
+            }
+        }
+
+        self.latest_block.store(block_number, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+struct RemoteStateView {
+    block_number: BlockNumber,
+    remote_fork: Arc<dyn RemoteForkSource>,
+}
+
+impl ReadStorage for RemoteStateView {
+    fn read(&mut self, key: B256) -> Option<B256> {
+        self.remote_fork
+            .read_value(self.block_number, key)
+            .ok()
+            .flatten()
+    }
+}
+
+impl PreimageSource for RemoteStateView {
+    fn get_preimage(&mut self, hash: B256) -> Option<Vec<u8>> {
+        self.remote_fork.read_preimage(hash).ok().flatten()
+    }
+}
+
+#[derive(Clone, Debug)]
+enum StateViewStorage {
+    Local(LocalStateView),
+    Remote(RemoteStateView),
+}
+
+impl ReadStorage for StateViewStorage {
+    fn read(&mut self, key: B256) -> Option<B256> {
+        match self {
+            Self::Local(local) => local.read(key),
+            Self::Remote(remote) => remote.read(key),
+        }
+    }
+}
+
+impl PreimageSource for StateViewStorage {
+    fn get_preimage(&mut self, hash: B256) -> Option<Vec<u8>> {
+        match self {
+            Self::Local(local) => local.get_preimage(hash),
+            Self::Remote(remote) => remote.get_preimage(hash),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ForkedStateHistory {
+    local: LocalStateHistory,
+    remote_fork: Arc<dyn RemoteForkSource>,
+    fork_block_number: BlockNumber,
+}
+
+impl ForkedStateHistory {
+    pub fn new(
+        genesis_storage_logs: impl IntoIterator<Item = (B256, B256)>,
+        genesis_preimages: impl IntoIterator<Item = (B256, Vec<u8>)>,
+        fork_block_number: BlockNumber,
+        remote_fork: Arc<dyn RemoteForkSource>,
+    ) -> Self {
+        Self {
+            local: LocalStateHistory::new(genesis_storage_logs, genesis_preimages),
+            remote_fork,
+            fork_block_number,
+        }
+    }
+}
+
+impl ReadStateHistory for ForkedStateHistory {
+    fn state_view_at(
+        &self,
+        block_number: BlockNumber,
+    ) -> StateResult<impl ReadStorage + PreimageSource + Clone> {
+        if block_number <= self.local.latest_block() {
+            return Ok(StateViewStorage::Local(LocalStateView {
+                storage: self.local.storage.clone(),
+                preimages: self.local.preimages.clone(),
+                block_number,
+            }));
+        }
+
+        if block_number <= self.fork_block_number {
+            return Ok(StateViewStorage::Remote(RemoteStateView {
+                block_number,
+                remote_fork: self.remote_fork.clone(),
+            }));
+        }
+
+        Err(StateError::NotFound(block_number))
+    }
+
+    fn block_range_available(&self) -> RangeInclusive<u64> {
+        0..=self.local.latest_block().max(self.fork_block_number)
+    }
+}
+
+impl WriteState for ForkedStateHistory {
+    fn add_block_result<'a, J>(
+        &self,
+        block_number: u64,
+        storage_diffs: Vec<StorageWrite>,
         new_preimages: J,
         override_allowed: bool,
     ) -> anyhow::Result<()>
@@ -612,207 +829,38 @@ impl<Local: WriteState> WriteState for ForkedStateHistory<Local> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum StateHistoryStorage<Local> {
-    Local(Local),
-    Forked(ForkedStateHistory<Local>),
-}
-
-impl<Local> StateHistoryStorage<Local> {
-    pub fn new(local: Local) -> Self {
-        Self::Local(local)
-    }
-
-    pub fn forked(local: Local, remote_fork: Arc<dyn RemoteForkSource>) -> Self {
-        Self::Forked(ForkedStateHistory::new(local, remote_fork))
-    }
-
-    pub fn local(&self) -> Local
-    where
-        Local: Clone,
-    {
-        match self {
-            Self::Local(local) => local.clone(),
-            Self::Forked(forked) => forked.local(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-enum StateViewStorage<Local> {
-    Local(Local),
-    Forked(ForkedStateView<Local>),
-}
-
-impl<Local: ViewState> ReadStorage for StateViewStorage<Local> {
-    fn read(&mut self, key: B256) -> Option<B256> {
-        match self {
-            Self::Local(local) => local.read(key),
-            Self::Forked(forked) => forked.read(key),
-        }
-    }
-}
-
-impl<Local: ViewState> PreimageSource for StateViewStorage<Local> {
-    fn get_preimage(&mut self, hash: B256) -> Option<Vec<u8>> {
-        match self {
-            Self::Local(local) => local.get_preimage(hash),
-            Self::Forked(forked) => forked.get_preimage(hash),
-        }
-    }
-}
-
-impl<Local: ReadStateHistory> ReadStateHistory for StateHistoryStorage<Local> {
-    fn state_view_at(
-        &self,
-        block_number: BlockNumber,
-    ) -> StateResult<impl ReadStorage + PreimageSource + Clone> {
-        match self {
-            Self::Local(local) => local
-                .state_view_at(block_number)
-                .map(StateViewStorage::Local),
-            Self::Forked(forked) => {
-                let local_state = match forked.local.state_view_at(block_number) {
-                    Ok(state) => Some(state),
-                    Err(StateError::Compacted(_) | StateError::NotFound(_)) => None,
-                };
-
-                Ok(StateViewStorage::Forked(ForkedStateView {
-                    local_state,
-                    block_number,
-                    remote_fork: forked.remote_fork.clone(),
-                }))
-            }
-        }
-    }
-
-    fn block_range_available(&self) -> RangeInclusive<u64> {
-        match self {
-            Self::Local(local) => local.block_range_available(),
-            Self::Forked(forked) => forked.block_range_available(),
-        }
-    }
-}
-
-impl<Local: WriteState> WriteState for StateHistoryStorage<Local> {
-    fn add_block_result<'a, J>(
-        &self,
-        block_number: u64,
-        storage_diffs: Vec<zksync_os_interface::types::StorageWrite>,
-        new_preimages: J,
-        override_allowed: bool,
-    ) -> anyhow::Result<()>
-    where
-        J: IntoIterator<Item = (B256, &'a Vec<u8>)>,
-    {
-        match self {
-            Self::Local(local) => {
-                local.add_block_result(block_number, storage_diffs, new_preimages, override_allowed)
-            }
-            Self::Forked(forked) => forked.add_block_result(
-                block_number,
-                storage_diffs,
-                new_preimages,
-                override_allowed,
-            ),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct ForkedStateView<Local> {
-    local_state: Option<Local>,
-    block_number: BlockNumber,
-    remote_fork: Arc<dyn RemoteForkSource>,
-}
-
-impl<Local: ViewState> ReadStorage for ForkedStateView<Local> {
-    fn read(&mut self, key: B256) -> Option<B256> {
-        if let Some(local_state) = &mut self.local_state
-            && let Some(value) = local_state.read(key)
-        {
-            return Some(value);
-        }
-
-        self.remote_fork
-            .read_value(self.block_number, key)
-            .ok()
-            .flatten()
-    }
-}
-
-impl<Local: ViewState> PreimageSource for ForkedStateView<Local> {
-    fn get_preimage(&mut self, hash: B256) -> Option<Vec<u8>> {
-        if let Some(local_state) = &mut self.local_state
-            && let Some(preimage) = local_state.get_preimage(hash)
-        {
-            return Some(preimage);
-        }
-
-        self.remote_fork.read_preimage(hash).ok().flatten()
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{ForkedStateView, RemoteForkSource};
+    use super::{ForkedReplayStorage, ForkedStateHistory, RemoteForkSource, StateViewStorage};
     use alloy::eips::BlockHashOrNumber;
-    use alloy::primitives::{Address, B256, BlockNumber, TxHash, TxNonce};
+    use alloy::primitives::{Address, B256, TxHash, TxNonce};
     use std::collections::HashMap;
+    use std::sync::Arc;
     use zksync_os_interface::traits::{PreimageSource, ReadStorage};
-    use zksync_os_storage_api::{ReplayRecord, RepositoryBlock, StateResult, StoredTxData, TxMeta};
-    use zksync_os_types::{ZkReceiptEnvelope, ZkTransaction};
-
-    #[derive(Clone, Debug)]
-    struct TestLocalState {
-        storage: HashMap<B256, B256>,
-        preimages: HashMap<B256, Vec<u8>>,
-    }
-
-    impl ReadStorage for TestLocalState {
-        fn read(&mut self, key: B256) -> Option<B256> {
-            self.storage.get(&key).copied()
-        }
-    }
-
-    impl PreimageSource for TestLocalState {
-        fn get_preimage(&mut self, hash: B256) -> Option<Vec<u8>> {
-            self.preimages.get(&hash).cloned()
-        }
-    }
+    use zksync_os_interface::types::BlockContext;
+    use zksync_os_storage_api::{ReplayRecord, StoredTxData};
+    use zksync_os_types::{BlockStartCursors, ProtocolSemanticVersion};
 
     #[derive(Debug)]
     struct TestRemoteFork {
         storage: HashMap<(u64, B256), B256>,
         preimages: HashMap<B256, Vec<u8>>,
+        replays: HashMap<u64, ReplayRecord>,
     }
 
     impl RemoteForkSource for TestRemoteFork {
-        fn read_value(&self, block_number: BlockNumber, key: B256) -> StateResult<Option<B256>> {
+        fn read_value(&self, block_number: u64, key: B256) -> super::StateResult<Option<B256>> {
             Ok(self.storage.get(&(block_number, key)).copied())
         }
 
-        fn read_preimage(&self, hash: B256) -> StateResult<Option<Vec<u8>>> {
+        fn read_preimage(&self, hash: B256) -> super::StateResult<Option<Vec<u8>>> {
             Ok(self.preimages.get(&hash).cloned())
         }
 
-        fn get_repository_block(&self, _: BlockHashOrNumber) -> Option<RepositoryBlock> {
-            None
-        }
-
-        fn get_raw_transaction(&self, _: TxHash) -> Option<Vec<u8>> {
-            None
-        }
-
-        fn get_transaction(&self, _: TxHash) -> Option<ZkTransaction> {
-            None
-        }
-
-        fn get_transaction_receipt(&self, _: TxHash) -> Option<ZkReceiptEnvelope> {
-            None
-        }
-
-        fn get_transaction_meta(&self, _: TxHash) -> Option<TxMeta> {
+        fn get_repository_block(
+            &self,
+            _: BlockHashOrNumber,
+        ) -> Option<zksync_os_storage_api::RepositoryBlock> {
             None
         }
 
@@ -824,72 +872,107 @@ mod tests {
             None
         }
 
-        fn get_latest_block(&self) -> Option<BlockNumber> {
-            None
+        fn get_replay_record(&self, block_number: u64) -> Option<ReplayRecord> {
+            self.replays.get(&block_number).cloned()
         }
+    }
 
-        fn get_replay_record(&self, _: BlockNumber) -> Option<ReplayRecord> {
-            None
-        }
-
-        fn get_latest_replay_record(&self) -> Option<BlockNumber> {
-            None
+    fn test_replay_record(block_number: u64) -> ReplayRecord {
+        ReplayRecord {
+            block_context: BlockContext {
+                block_number,
+                timestamp: block_number,
+                chain_id: 1,
+                coinbase: Address::ZERO,
+                block_hashes: Default::default(),
+                gas_limit: 0,
+                pubdata_limit: 0,
+                mix_hash: Default::default(),
+                execution_version: Default::default(),
+            },
+            transactions: vec![],
+            previous_block_timestamp: block_number.saturating_sub(1),
+            node_version: semver::Version::new(0, 18, 0),
+            protocol_version: ProtocolSemanticVersion::legacy_genesis_version(),
+            block_output_hash: B256::ZERO,
+            force_preimages: vec![],
+            starting_cursors: BlockStartCursors::default(),
         }
     }
 
     #[test]
-    fn falls_back_to_remote_storage_when_local_value_is_missing() {
+    fn state_reads_fall_back_to_remote_before_local_catch_up() {
         let key = B256::with_last_byte(1);
         let remote_value = B256::with_last_byte(2);
-        let remote = TestRemoteFork {
-            storage: HashMap::from([((7, key), remote_value)]),
-            preimages: HashMap::new(),
-        };
-        let mut view = ForkedStateView {
-            local_state: Some(TestLocalState {
-                storage: HashMap::new(),
+        let mut view = ForkedStateHistory::new(
+            vec![],
+            vec![],
+            7,
+            Arc::new(TestRemoteFork {
+                storage: HashMap::from([((7, key), remote_value)]),
                 preimages: HashMap::new(),
+                replays: HashMap::new(),
             }),
-            block_number: 7,
-            remote_fork: Arc::new(remote),
-        };
+        )
+        .state_view_at(7)
+        .unwrap();
 
         assert_eq!(view.read(key), Some(remote_value));
     }
 
     #[test]
-    fn falls_back_to_remote_preimage_without_local_state() {
-        let hash = B256::with_last_byte(3);
-        let preimage = vec![1, 2, 3];
-        let remote = TestRemoteFork {
-            storage: HashMap::new(),
-            preimages: HashMap::from([(hash, preimage.clone())]),
-        };
-        let mut view = ForkedStateView::<TestLocalState> {
-            local_state: None,
-            block_number: 11,
-            remote_fork: Arc::new(remote),
-        };
+    fn state_reads_use_local_values_after_replay() {
+        let key = B256::with_last_byte(3);
+        let local_value = B256::with_last_byte(4);
+        let state = ForkedStateHistory::new(
+            vec![],
+            vec![],
+            5,
+            Arc::new(TestRemoteFork {
+                storage: HashMap::new(),
+                preimages: HashMap::new(),
+                replays: HashMap::new(),
+            }),
+        );
+        state
+            .add_block_result(
+                1,
+                vec![StorageWrite {
+                    key,
+                    value: local_value,
+                    account: Default::default(),
+                    account_key: Default::default(),
+                }],
+                std::iter::empty::<(B256, &Vec<u8>)>(),
+                false,
+            )
+            .unwrap();
 
-        assert_eq!(view.get_preimage(hash), Some(preimage));
+        let mut view = state.state_view_at(1).unwrap();
+        assert_eq!(view.read(key), Some(local_value));
     }
 
     #[test]
-    fn preserves_local_values_when_available() {
-        let key = B256::with_last_byte(9);
-        let local_value = B256::with_last_byte(10);
-        let mut view = ForkedStateView {
-            local_state: Some(TestLocalState {
-                storage: HashMap::from([(key, local_value)]),
+    fn replay_reads_remote_until_written_locally() {
+        let remote_record = test_replay_record(1);
+        let replay_storage = ForkedReplayStorage::new(
+            test_replay_record(0),
+            1,
+            Arc::new(TestRemoteFork {
+                storage: HashMap::new(),
                 preimages: HashMap::new(),
+                replays: HashMap::from([(1, remote_record.clone())]),
             }),
-            block_number: 0,
-            remote_fork: Arc::new(TestRemoteFork {
-                storage: HashMap::from([((0, key), B256::with_last_byte(11))]),
-                preimages: HashMap::new(),
-            }),
-        };
+        );
 
-        assert_eq!(view.read(key), Some(local_value));
+        assert_eq!(
+            replay_storage
+                .get_replay_record(1)
+                .unwrap()
+                .block_context
+                .block_number,
+            1
+        );
+        assert_eq!(replay_storage.latest_record(), 1);
     }
 }

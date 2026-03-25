@@ -4,8 +4,9 @@ use std::{ops::RangeInclusive, sync::Arc};
 use zksync_os_interface::traits::{PreimageSource, ReadStorage};
 use zksync_os_merkle_tree_api::MerkleTreeProver;
 use zksync_os_storage_api::{
-    ReadBatch, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, RepositoryError,
-    RepositoryResult, StateError, StateResult, ViewState, notifications::SubscribeToBlocks,
+    ReadBatch, ReadFinality, ReadReplay, ReadRepository, ReadStateHistory, RepositoryBlock,
+    RepositoryError, RepositoryResult, StateError, StateResult, ViewState,
+    notifications::SubscribeToBlocks,
 };
 
 pub trait ReadRpcStorage: ReadStateHistory + Clone {
@@ -20,7 +21,7 @@ pub trait ReadRpcStorage: ReadStateHistory + Clone {
     fn get_block_by_hash_or_number(
         &self,
         hash_or_number: BlockHashOrNumber,
-    ) -> RepositoryResult<Option<zksync_os_storage_api::RepositoryBlock>> {
+    ) -> RepositoryResult<Option<RepositoryBlock>> {
         match hash_or_number {
             BlockHashOrNumber::Hash(hash) => self.repository().get_block_by_hash(hash),
             BlockHashOrNumber::Number(number) => self.repository().get_block_by_number(number),
@@ -72,10 +73,10 @@ pub trait ReadRpcStorage: ReadStateHistory + Clone {
     }
 
     /// Get sealed block with transaction hashes number by its id.
-    fn get_block_by_id(
-        &self,
-        block_id: BlockId,
-    ) -> RepositoryResult<Option<zksync_os_storage_api::RepositoryBlock>> {
+    fn get_block_by_id(&self, block_id: BlockId) -> RepositoryResult<Option<RepositoryBlock>> {
+        // We presume that a reasonable number of historical blocks are being saved, so that
+        // `Latest`/`Pending`/`Safe`/`Finalized` always resolve even if we don't take a look between
+        // two actions below.
         let block_hash_or_number = self.resolve_block_hash_or_number(block_id);
         self.get_block_by_hash_or_number(block_hash_or_number)
     }
@@ -199,10 +200,13 @@ impl<
     }
 }
 
+/// RPC storage result type.
 pub type RpcStorageResult<Ok> = Result<Ok, RpcStorageError>;
 
+/// Generic error type for RPC storage.
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum RpcStorageError {
+    /// Block could not be found by its id (hash/number/tag).
     #[error("block `{0}` not found")]
     BlockNotFound(BlockId),
 
